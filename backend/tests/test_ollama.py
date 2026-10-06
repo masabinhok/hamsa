@@ -7,7 +7,8 @@ import httpx
 import pytest
 from PIL import Image
 
-from app.llm.ollama import KEEP_ALIVE, NUM_CTX, OllamaClient, StructuredOutputError, required_schema
+from app.llm.ollama import KEEP_ALIVE, NUM_CTX, OllamaClient
+from app.llm.structured import StructuredOutputError, required_schema
 from app.pipeline.contracts import Claim
 
 VALID = {
