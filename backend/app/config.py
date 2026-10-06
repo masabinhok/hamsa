@@ -1,3 +1,4 @@
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,8 +21,13 @@ class Settings(BaseSettings):
 
     ollama_host: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     vision_model: str = "qwen3-vl:8b-instruct"
+    embedding_model: str = "bge-m3"
 
     qdrant_url: AnyHttpUrl = AnyHttpUrl("http://localhost:6333")
+
+    # The disaster this deployment covers. News before this date cannot describe it;
+    # fact-checks of any date still count (architecture 3.5).
+    incident_start: date = date(2026, 8, 26)
 
 
 @lru_cache
