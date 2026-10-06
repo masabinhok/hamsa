@@ -137,14 +137,14 @@ A duplicate is merged under the existing case, which strengthens its virality si
 | `confidence` | float from 0 to 1 | model self-report, used only alongside deterministic signals |
 | `rationale_en` | str, at most 120 words | shown on the desk |
 | `rationale_ne` | str | shown on the published verdict |
-| `cited_passages` | list of `passage_id` | **every id must exist in the input**, otherwise the output is invalid |
+| `citations` | list of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
 | `model` | str | which model produced it (Groq or fallback) |
 
 The prompt gives the model only the evidence and match results, and instructs `unverifiable` when the evidence does not settle the claim. A citation to a passage that was not provided is treated as a hallucination: the output is rejected and retried once.
 
 ### 3.7 Router (deterministic)
 
-The models propose; rules decide ([ADR 0004](adr/0004-deterministic-router.md)). The rules are checked in order, and the first match wins. Every decision records the reasons that fired it.
+The models propose; rules decide ([ADR 0004](adr/0004-deterministic-router.md)). Implemented as a pure function in `backend/app/router/route.py`. The rules are checked in order, the first match wins, and every decision records the reasons that fired it.
 
 ```mermaid
 flowchart TD
@@ -154,17 +154,32 @@ flowchart TD
     d -->|yes| merge[merge]
     d -->|no| c{Claim checkable?}
     c -->|no| close[dismiss<br/>reason: not a factual claim]
-    c -->|yes| r{Strong hit on prior footage<br/>AND verdict false or misleading?}
+    c -->|yes| x{Any conflicting signal?}
+    x -->|no| r{Verdict false or misleading<br/>AND strong hit on prior footage?}
     r -->|yes| ft1[fast_track<br/>reason: recycled media]
-    r -->|no| e{Verdict confidence ≥ 0.85<br/>AND ≥ 2 independent sources<br/>AND no conflicting signal?}
-    e -->|yes| ft2[fast_track<br/>reason: strong evidence]
-    e -->|no| n{No evidence AND no archive hit?}
+    r -->|no| w{Verdict false or misleading<br/>AND AI-tool watermark<br/>AND confidence ≥ 0.85?}
+    w -->|yes| ft2[fast_track<br/>reason: AI-tool watermark]
+    w -->|no| e{Verdict not unverifiable<br/>AND confidence ≥ 0.85<br/>AND ≥ 2 independent agreeing sources?}
+    e -->|yes| ft3[fast_track<br/>reason: strong evidence]
+    e -->|no| n
+    x -->|yes| n{No evidence AND no archive hit?}
     n -->|yes| inv[investigate<br/>reason: new claim]
-    n -->|no| hr2[human_review<br/>reason: ambiguous]
+    n -->|no| hr2[human_review<br/>reason: the conflict, or why confidence fell short]
 ```
 
-- **Conflicting signal:** for example, a `verified_genuine` archive hit with a `false` verdict, a visible AI-tool watermark with a `true` verdict, or a cited fact-check that disagrees with the label.
-- **The 0.85 threshold:** a *starting value*. Model confidence is not calibrated, so the threshold is tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.
+**Definitions**
+- **Strong hit:** pHash distance of 10 or less, or SigLIP cosine of 0.90 or more. Only `prior` archive hits count as recycled evidence. A `verified_genuine` hit does not, because genuine footage can still carry a false caption.
+- **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
+- **Independent agreeing sources:** distinct outlets among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same outlet count once.
+- **Conflicting signal:**
+  - a `true` verdict with a strong `prior` hit
+  - a `true` verdict with an AI-tool watermark
+  - any cited passage whose stance contradicts the verdict
+
+Notes:
+- **Thresholds are starting values** (`Thresholds` in the router). Model confidence is not calibrated, so they are tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.
+- **Recycled-media fast-tracks ignore model confidence,** because the archive match is itself the proof, and the checker sees the original side by side.
+- **`unverifiable` is never fast-tracked.**
 - **`fast_track` does not mean published.** It means the case goes to the top of the desk with a pre-filled verdict for one-click approval.
 - **`dismiss`:** cases are kept and can be reopened from the desk.
 
