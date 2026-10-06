@@ -21,6 +21,8 @@ ENGLISH_TERMS = ("flood", "landslide", "GLOF", "inundation")
 
 @dataclass(frozen=True)
 class WordPressSource:
+    # The publisher. Independence of sources is judged per publisher, so editions of
+    # one outlet (Nepali and English Onlinekhabar) share a name.
     name: str
     base_url: str
     kind: SourceKind
@@ -36,7 +38,7 @@ SOURCES = (
         "Onlinekhabar", "https://www.onlinekhabar.com", SourceKind.NEWS, "ne", NEPALI_TERMS
     ),
     WordPressSource(
-        "Onlinekhabar English",
+        "Onlinekhabar",
         "https://english.onlinekhabar.com",
         SourceKind.NEWS,
         "en",
