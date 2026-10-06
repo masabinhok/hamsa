@@ -55,6 +55,8 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config", "-ra"]
 xfail_strict = true
+# Tests use in-memory Qdrant, which ignores payload indexes; the server uses them.
+filterwarnings = ["ignore:Payload indexes have no effect in the local Qdrant"]
 
 # CPU-only torch: SigLIP runs on the CPU (ADR 0007), and CUDA wheels add ~2 GB.
 [[tool.uv.index]]
