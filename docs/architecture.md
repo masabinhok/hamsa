@@ -1,3 +1,283 @@
 # Architecture
 
-Detailed design is written during Week 1 (Oct 1–7). See the README for the overview.
+This is the contract for how Hamsa works: what each part takes in, what it returns, how it fails, and what decides where a case goes. Why each choice was made lives in [`docs/adr/`](adr/). Thresholds marked *starting value* are calibrated on the eval tuning split (`h001` to `h040`, see [data collection](data-collection.md)).
+
+## 1. Goals and non-goals
+
+**Goals**
+- Cut the time from "suspicious post submitted" to "verdict ready for a human to approve" from hours to minutes.
+- Every routing decision is explainable: a checker can see which signal sent a case where.
+- Runs on one laptop (8 GB VRAM, 16 GB RAM) with open-weight models only.
+- A human approves every published verdict.
+
+**Non-goals**
+- Pixel-level detection of AI-generated media ([ADR 0002](adr/0002-no-pixel-level-synthetic-detection.md)).
+- Automatic publishing, or any action on a platform (takedowns, replies).
+- General-purpose fact-checking. The archive, sources, and prompts target one disaster at a time, configured as an *incident* (for now, the August 2026 floods starting 2026-08-26).
+
+## 2. System context
+
+```mermaid
+flowchart LR
+    citizen([Citizen or journalist]) -->|post, link, or media| web[Web submit form]
+    citizen -.->|stretch goal| tg[Telegram bot]
+    checker([Fact-checker]) --> desk[Checker desk]
+    public([Public]) --> feed[Published verdicts]
+
+    subgraph hamsa [Hamsa on one machine]
+        web --> api[FastAPI]
+        tg -.-> api
+        desk --> api
+        feed --> api
+        api --> db[(SQLite<br/>cases, jobs, decisions)]
+        worker[Pipeline worker] --> db
+        worker --> qdrant[(Qdrant<br/>media archive,<br/>evidence corpus,<br/>claims)]
+        worker --> ollama[Ollama<br/>Qwen3-VL-8B on GPU<br/>bge-m3 on CPU]
+        worker --> siglip[SigLIP on CPU]
+        ingestor[Corpus ingestor] --> qdrant
+    end
+
+    worker -->|reasoning| groq[Groq<br/>gpt-oss-120b]
+    ingestor -->|RSS, fact-check sites| sources[(Trusted sources)]
+```
+
+The API never runs models. It writes a case and a job row, and returns immediately. One worker process takes jobs one at a time ([ADR 0005](adr/0005-sqlite-case-store-and-job-queue.md)). Running one job at a time is also what keeps the vision model alone on the GPU ([ADR 0007](adr/0007-gpu-for-vision-model-only.md)).
+
+## 3. Pipeline
+
+```mermaid
+flowchart TD
+    sub[Submission] --> ingest[1. Ingest and normalise]
+    ingest --> extract[2. Claim extraction<br/>Qwen3-VL]
+    ingest --> match[3. Media match<br/>pHash + SigLIP]
+    extract --> dedup[4. Duplicate check<br/>media hash + bge-m3]
+    extract --> retrieve[5. Evidence retrieval<br/>bge-m3]
+    match --> verdict[6. Verdict<br/>gpt-oss-120b]
+    retrieve --> verdict
+    dedup --> router[7. Router]
+    match --> router
+    verdict --> router
+    router --> desk[Checker desk]
+```
+
+Each stage returns a Pydantic model. Model outputs are requested with a JSON schema (Ollama `format`, Groq structured outputs), then parsed and validated. A response that fails validation is a stage failure (section 6), never a silent default.
+
+### 3.1 Ingest
+
+**In:** `Submission` with `channel` (`web` or `telegram`), optional `text`, optional `url`, and zero or more uploaded files.
+**Out:** `NormalisedCase` with the text, the source URL, and a list of `MediaAsset`s (`sha256`, `kind`, `path`, and for video the `keyframes`).
+
+- **URLs:** only allowed platform hosts (Facebook, TikTok, X, YouTube, Instagram) are fetched, with `yt-dlp`. This prevents the server being used to fetch arbitrary internal addresses.
+- **Uploads:** at most 100 MB each. The file type is sniffed from its bytes, not its name or extension.
+- **Images:** decoded and re-encoded, which strips EXIF metadata including location.
+- **Video:** keyframes are taken at scene changes using PyAV, capped at 6 frames per video and scaled to at most 720p.
+  - *Measured:* 6 frames cost about 3,200 prompt tokens and take about 4 seconds on the target GPU.
+- **Storage:** media goes in `data/cases/<case_id>/`, which is gitignored.
+
+### 3.2 Claim extraction (Qwen3-VL-8B, local)
+
+**In:** the case text plus up to 6 frames.
+**Out:** `Claim`
+
+| Field | Type | Used by |
+|---|---|---|
+| `claim` | str, original language | retrieval, dedup, desk |
+| `claim_en` | str | retrieval (cross-lingual), verdict |
+| `places` | list of str | retrieval query, verdict |
+| `claimed_date` | date or null | "predates the incident" check |
+| `numbers` | list of `{value, unit, refers_to}` | verdict (checks death tolls and similar) |
+| `visible_text` | list of str | retrieval, verdict |
+| `watermarks` | list of str | router (AI-tool marks such as Veo, Sora, Gemini) |
+| `handles` | list of str | desk (provenance), dedup |
+| `checkable` | bool | router: opinions and prayers are not checkable |
+
+The prompt asks for exactly what is visible or stated, never inferred. Every field may be empty except `claim`. Settings: temperature 0, `num_ctx` 8192.
+
+### 3.3 Media match (pHash + SigLIP, CPU)
+
+**In:** the case's `MediaAsset`s.
+**Out:** `MediaMatch` with a list of `ArchiveHit`s (`archive_id`, `frame`, `phash_distance`, `cosine`, `original_context`, `original_date`, `source_url`, `archive_label`).
+
+Two tiers ([ADR 0003](adr/0003-two-tier-media-matching.md)):
+1. **pHash**, a 64-bit perceptual hash per frame. A Hamming distance of 10 or less counts as the same image. *Starting value.*
+2. **SigLIP** image embeddings, searched in Qdrant. A cosine similarity of 0.90 or more is a near-duplicate (crops, re-encodes, overlays). *Starting value.*
+
+Each archive item carries a label:
+- **`prior`:** footage from before the incident, or from elsewhere.
+- **`verified_genuine`:** confirmed footage of this incident.
+
+A hit on `prior` footage is evidence that the post is recycled. A hit on `verified_genuine` footage supports the post being authentic.
+
+### 3.4 Duplicate check
+
+A case is a duplicate of an open case if either:
+- **exact media:** any media `sha256` or pHash matches exactly, or
+- **same claim:** the bge-m3 cosine between `claim_en` values is 0.92 or more *and* the `places` overlap. *Starting value.*
+
+A duplicate is merged under the existing case, which strengthens its virality signal. It is not processed again.
+
+### 3.5 Evidence retrieval (bge-m3, CPU)
+
+**In:** `Claim`.
+**Out:** `Evidence`, a list of up to 8 `Passage`s (`passage_id`, `source`, `source_kind`, `url`, `published_at`, `text`, `score`).
+
+- **Corpus:** a scheduled ingestor reads RSS and article pages from trusted sources (Nepali and English news outlets, government bodies, fact-checkers), splits them into chunks of about 300 tokens, and embeds each chunk.
+- **Query:** one query on `claim_en` and one on `claim`, merged by reciprocal rank. This catches matches across Nepali and English.
+- **Prior fact-checks:** passages from fact-checkers have `source_kind = fact_check`. A prior fact-check of the same claim is the strongest single evidence signal.
+- **Recency:** only passages published on or after the incident start are used, except fact-checks.
+
+### 3.6 Verdict (gpt-oss-120b on Groq, local fallback)
+
+**In:** `Claim`, `MediaMatch`, `Evidence`.
+**Out:** `Verdict`
+
+| Field | Type | Rule |
+|---|---|---|
+| `label` | `false`, `misleading`, `true`, `unverifiable` | same labels as the eval set |
+| `confidence` | float from 0 to 1 | model self-report, used only alongside deterministic signals |
+| `rationale_en` | str, at most 120 words | shown on the desk |
+| `rationale_ne` | str | shown on the published verdict |
+| `cited_passages` | list of `passage_id` | **every id must exist in the input**, otherwise the output is invalid |
+| `model` | str | which model produced it (Groq or fallback) |
+
+The prompt gives the model only the evidence and match results, and instructs `unverifiable` when the evidence does not settle the claim. A citation to a passage that was not provided is treated as a hallucination: the output is rejected and retried once.
+
+### 3.7 Router (deterministic)
+
+The models propose; rules decide ([ADR 0004](adr/0004-deterministic-router.md)). The rules are checked in order, and the first match wins. Every decision records the reasons that fired it.
+
+```mermaid
+flowchart TD
+    start([Stage outputs]) --> f{Any stage failed?}
+    f -->|yes| hr1[human_review<br/>reason: stage failure]
+    f -->|no| d{Duplicate of open case?}
+    d -->|yes| merge[merge]
+    d -->|no| c{Claim checkable?}
+    c -->|no| close[dismiss<br/>reason: not a factual claim]
+    c -->|yes| r{Strong hit on prior footage<br/>AND verdict false or misleading?}
+    r -->|yes| ft1[fast_track<br/>reason: recycled media]
+    r -->|no| e{Verdict confidence ≥ 0.85<br/>AND ≥ 2 independent sources<br/>AND no conflicting signal?}
+    e -->|yes| ft2[fast_track<br/>reason: strong evidence]
+    e -->|no| n{No evidence AND no archive hit?}
+    n -->|yes| inv[investigate<br/>reason: new claim]
+    n -->|no| hr2[human_review<br/>reason: ambiguous]
+```
+
+- **Conflicting signal:** for example, a `verified_genuine` archive hit with a `false` verdict, a visible AI-tool watermark with a `true` verdict, or a cited fact-check that disagrees with the label.
+- **The 0.85 threshold:** a *starting value*. Model confidence is not calibrated, so the threshold is tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.
+- **`fast_track` does not mean published.** It means the case goes to the top of the desk with a pre-filled verdict for one-click approval.
+- **`dismiss`:** cases are kept and can be reopened from the desk.
+
+## 4. Case lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> received
+    received --> processing: worker picks job
+    processing --> routed: router decision
+    processing --> routed: stage failure, sent to human_review
+    received --> merged: duplicate at ingest
+    routed --> merged: duplicate found later
+    routed --> approved: checker approves or edits
+    routed --> rejected: checker rejects
+    approved --> published
+    published --> routed: reopened with new evidence
+    merged --> [*]
+    rejected --> [*]
+```
+
+Every transition is written as a row in `case_events`, recording the actor (system or checker id), the time, and the reason. This is the audit trail behind every published verdict.
+
+## 5. User journeys
+
+**Submitter.** Pastes a link, text, or media into the web form, then gets a case id and a status page. When the case is published, the status page shows the verdict in Nepali and English with sources.
+
+**Checker.**
+
+```mermaid
+sequenceDiagram
+    actor C as Checker
+    participant D as Desk
+    participant A as API
+    C->>D: open queue
+    D->>A: GET /desk/queue
+    A-->>D: cases sorted by route, then virality
+    C->>D: open case
+    D-->>C: post vs archive original side by side,<br/>claim fields, evidence passages, draft verdict, reasons
+    alt agrees
+        C->>D: approve
+    else edits
+        C->>D: change label or rationale, approve
+    else disagrees
+        C->>D: reject with note
+    end
+    D->>A: POST /cases/{id}/decision
+    A-->>D: published or closed
+```
+
+Checker edits are stored next to the model's draft. The disagreement rate is a production metric, and the eval set is the offline version of the same measure.
+
+## 6. Failure modes
+
+| Failure | Detection | Response |
+|---|---|---|
+| Groq rate limit (429) or 5xx | HTTP status | Retry twice, honouring `retry-after`, then fall back to the local model. `Verdict.model` records which model ran. |
+| No Groq key | config | Local model for every verdict. |
+| Invalid JSON or a schema violation | Pydantic | Retry once with the validation error in the prompt, then mark the stage failed and send the case to `human_review`. |
+| Hallucinated citation | id not in the input | Same as invalid JSON. |
+| Ollama down or out of memory | connection error or error body | Job retried with backoff, up to 3 attempts, then `human_review` with the reason. |
+| Media download fails | yt-dlp exit code | Continue with text only and flag "media unavailable" on the desk. |
+| Qdrant down | connection error | Job retried, since every later stage needs it. |
+| Worker crash mid-job | job stuck in `running` past its lease | Requeued on worker start. Stages are idempotent per case. |
+
+No failure produces a verdict on its own. The worst outcome is a case on a human's desk with the reason attached.
+
+## 7. Resource budget
+
+Measured on the target machine (RTX 4060 Laptop, 8 GB VRAM, 16 GB RAM) on 2026-10-06.
+
+| Component | Where | Memory | Notes |
+|---|---|---|---|
+| Qwen3-VL-8B Q4_K_M, ctx 8192 | GPU plus CPU spill | 8.0 GB total (about 29% on CPU) | Load about 11 s; 6 frames about 4 s; output about 20 tokens/s; about 30 s per extraction when warm |
+| bge-m3 via Ollama (`num_gpu: 0`) | CPU | about 1.2 GB | 1024-dim; about 3 s cold for a short batch |
+| SigLIP base | CPU | about 1 GB | |
+| Qdrant | CPU | about 0.5 GB | |
+| API, worker, Next.js dev server | CPU | about 2 GB | |
+
+- **The 8B model does not fully fit in 8 GB of VRAM,** so Ollama spills part of it to the CPU. Speed is still acceptable for triage. The worker keeps the model loaded (`keep_alive` 30 minutes) so the 11-second load happens once.
+- **Raising `num_ctx` to 16384 pushes 39% onto the CPU,** so it stays at 8192.
+- **`qwen3-vl:4b` is the fallback option** if extraction quality is equal on the eval set.
+- **The local verdict fallback reuses the vision model** rather than loading a second model, to avoid swapping weights in and out of the GPU.
+
+## 8. Evaluation
+
+Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, and reported numbers use `h041` onward.
+
+| Metric | What it protects against |
+|---|---|
+| Recycled-media precision and recall | Missing old footage, or wrongly calling genuine footage old |
+| Verdict accuracy and macro-F1 over the four labels | Bad reasoning |
+| **Fast-track precision** (target ≥ 0.95) | Confidently wrong verdicts reaching one-click approval |
+| Human-review rate | A desk that sends everything to humans saves no time |
+| p50 and p95 time per case | The point of the project |
+
+## 9. Security and privacy
+
+- **Desk login:** the desk and decision endpoints need a checker login, with credentials from the environment for the demo. Submit and published-feed endpoints are public and rate-limited per IP.
+- **Fetching links:** URL fetching is limited to allowed hosts (section 3.1). Uploads are type-sniffed and size-capped, and are never run or rendered as HTML.
+- **Stored data:** EXIF is stripped. Submitter contact details are optional, and Telegram user ids are hashed.
+- **Secrets:** come only from the environment (`app/config.py`). `.env` is gitignored, and the pre-commit hooks check for private keys.
+
+## 10. Code map
+
+| Concern | Module |
+|---|---|
+| Settings | `backend/app/config.py` |
+| HTTP API | `backend/app/api/` |
+| Ingest, keyframes, URL fetch | `backend/app/ingest/` |
+| Pipeline stages and their models | `backend/app/pipeline/` (`extract.py`, `media_match.py`, `dedup.py`, `retrieve.py`, `verdict.py`) |
+| Router | `backend/app/router/route.py` |
+| Case store, jobs, events | `backend/app/store/` |
+| Eval set and scoring | `backend/app/eval/` |
+| Corpus and archive ingestion | `scripts/` |
+| Checker desk, submit form, feed | `frontend/` |
