@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Fact-check triage desk for Nepali disaster misinformation, on open-weight AI."
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.15.0",
+]
 
 [dependency-groups]
 dev = [
