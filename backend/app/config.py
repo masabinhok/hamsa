@@ -14,13 +14,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Optional so the pipeline can run fully local on the fallback model.
+    # Optional: without it, verdicts fall back to the local vision model (ADR 0001, 0007).
     groq_api_key: SecretStr | None = None
     reasoning_model: str = "openai/gpt-oss-120b"
 
     ollama_host: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     vision_model: str = "qwen3-vl:8b-instruct"
-    fallback_model: str = "qwen3:8b"
 
     qdrant_url: AnyHttpUrl = AnyHttpUrl("http://localhost:6333")
 
