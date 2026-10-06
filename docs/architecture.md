@@ -261,7 +261,13 @@ stateDiagram-v2
     rejected --> [*]
 ```
 
-Every transition is written as a row in `case_events`, recording the actor (system or checker id), the time, and the reason. This is the audit trail behind every published verdict.
+Every transition is written as a row in `case_events`, recording the actor (system or checker name), the time, and the reason. This is the audit trail behind every published verdict.
+
+Implemented in `backend/app/store/`.
+- **Claiming a job** is one atomic `UPDATE … RETURNING` that takes the oldest due job, or one whose 10-minute lease expired (a dead worker's).
+- **Retries:** transient stage failures (Ollama or Qdrant unreachable, HTTP 5xx) requeue the job with backoff (30 s, then 2 min, at most 3 attempts) before the case goes to a human.
+- **Pipeline bugs** route the case to a human with the error, rather than looping or losing it.
+- **Storage:** SQLite runs in WAL mode, so the API reads while the worker writes. Times are stored as UTC and always load time-zone aware.
 
 ## 5. User journeys
 
@@ -303,7 +309,7 @@ Checker edits are stored next to the model's draft. The disagreement rate is a p
 | Ollama down or out of memory | connection error or error body | Job retried with backoff, up to 3 attempts, then `human_review` with the reason. |
 | Media download fails | yt-dlp exit code | Continue with text only and flag "media unavailable" on the desk. |
 | Qdrant down | connection error | Job retried, since every later stage needs it. |
-| Worker crash mid-job | job stuck in `running` past its lease | Requeued on worker start. Stages are idempotent per case. |
+| Worker crash mid-job | job still `running` past its 10-minute lease | The next claim takes it again (attempts counted). Stages are idempotent per case. |
 
 No failure produces a verdict on its own. The worst outcome is a case on a human's desk with the reason attached.
 
@@ -340,9 +346,11 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 
 ## 9. Security and privacy
 
-- **Desk login:** the desk and decision endpoints need a checker login, with credentials from the environment for the demo. Submit and published-feed endpoints are public and rate-limited per IP.
-- **Fetching links:** URL fetching is limited to allowed hosts (section 3.1). Uploads are type-sniffed and size-capped, and are never run or rendered as HTML.
-- **Stored data:** EXIF is stripped. Submitter contact details are optional, and Telegram user ids are hashed.
+- **Desk access:** every `/desk` endpoint needs `Authorization: Bearer $DESK_TOKEN`, compared in constant time. The desk is disabled (503) while no token is set. Decisions record the checker's name in the audit trail.
+- **Public endpoints never show model drafts.** A submitter sees the case status, and the verdict only after a checker publishes it.
+- **Submissions:** at most 10 per minute per client IP (in-memory sliding window; one API process). At most 4 files of 100 MB each, typed by their bytes (JPEG, PNG, WebP, MP4/MOV, WebM/MKV), never by name or declared type, and stored under a content-hash name. Media is served back only by a stored name, which also blocks path traversal.
+- **Links:** stored as given and validated as URLs. Fetching them (planned, with `yt-dlp`) will be limited to allowed platform hosts, so the server cannot be used to fetch internal addresses.
+- **Stored data:** EXIF is dropped when frames are decoded. No submitter contact details are collected.
 - **Secrets:** come only from the environment (`app/config.py`). `.env` is gitignored, and the pre-commit hooks check for private keys.
 
 ## 10. Code map
@@ -350,11 +358,13 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 | Concern | Module |
 |---|---|
 | Settings | `backend/app/config.py` |
-| HTTP API | `backend/app/api/` |
+| HTTP API (`uv run uvicorn --factory app.api.main:default_app`) | `backend/app/api/` |
 | Ingest, keyframes (`frames.py`), URL fetch | `backend/app/ingest/` |
 | Pipeline stages and their models | `backend/app/pipeline/` (`extract.py`, `media_match.py`, `dedup.py`, `retrieve.py`, `verdict.py`) |
 | Router | `backend/app/router/route.py` |
 | Case store, jobs, events | `backend/app/store/` |
+| Worker (`uv run python -m app.worker`) | `backend/app/worker.py` |
+| Pipeline runner (`uv run python -m app.pipeline`) | `backend/app/pipeline/run.py` |
 | Eval set and scoring | `backend/app/eval/` |
 | Archive build (`uv run python -m app.archive`) | `backend/app/archive.py` |
 | Evidence corpus ingestion | `scripts/` |

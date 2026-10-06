@@ -178,6 +178,9 @@ class Stage(StrEnum):
 class StageFailure(Contract):
     stage: Stage
     error: NonEmptyStr
+    # A service was unreachable (Ollama, Qdrant): the worker retries the job instead of
+    # routing it. Permanent failures (an undecodable video) go straight to a human.
+    transient: bool = False
 
 
 class Route(StrEnum):
