@@ -12,3 +12,5 @@ data/qdrant/
 data/eval/media/
 data/eval/robustness/
 data/corpus/
+data/hamsa.db*
+data/cases/
