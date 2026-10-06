@@ -235,3 +235,31 @@ def test_custom_thresholds_are_respected() -> None:
     )
     assert route(case).route is Route.HUMAN_REVIEW
     assert route(case, Thresholds(fast_track_confidence=0.7)).route is Route.FAST_TRACK
+
+
+# fallback verdicts
+
+
+def test_fallback_verdict_is_never_fast_tracked_on_evidence_alone() -> None:
+    decision = route(
+        outputs(
+            passages=TWO_SOURCES,
+            verdict=verdict("false", 0.98, citations=[cite("p1"), cite("p2")], fallback=True),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == [
+        "drafted by the local fallback model (openai/gpt-oss-120b); needs a human"
+    ]
+
+
+def test_fallback_verdict_is_never_fast_tracked_on_a_watermark() -> None:
+    decision = route(
+        outputs(claim=claim(watermarks=["Veo"]), verdict=verdict("false", 0.98, fallback=True))
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_recycled_media_still_fast_tracks_a_fallback_verdict() -> None:
+    decision = route(outputs(hits=[hit()], verdict=verdict("false", 0.5, fallback=True)))
+    assert decision.route is Route.FAST_TRACK
