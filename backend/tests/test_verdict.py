@@ -80,6 +80,15 @@ def test_prompt_labels_evidence_and_states_media_and_match_strength() -> None:
     assert "[E2] Onlinekhabar (news, " in prompt
 
 
+def test_prompt_shows_passage_headlines() -> None:
+    headlined = Evidence(
+        passages=[passage("x-0", "Nepal Factcheck", title="Viral video is from Alaska")]
+    )
+    prompt = build_prompt(claim(), MediaMatch(), headlined, has_media=True)
+    assert "[E1] Nepal Factcheck (news, " in prompt
+    assert "Headline: Viral video is from Alaska\n" in prompt
+
+
 def test_text_only_post_and_empty_inputs_are_stated() -> None:
     prompt = build_prompt(claim(), MediaMatch(), Evidence(), has_media=False)
     assert prompt.startswith("POST: text only")
