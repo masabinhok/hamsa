@@ -95,7 +95,7 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         # The verdict stage rejects these; reaching here means a pipeline bug.
         raise ValueError(f"verdict cites passages it was not given: {unknown}")
 
-    strong = [hit for hit in media.hits if _is_strong(hit, thresholds)]
+    strong = [hit for hit in media.hits if is_strong_match(hit, thresholds)]
     strong_prior = [h for h in strong if h.archive_label is ArchiveLabel.PRIOR]
     ai_marks = _ai_tool_marks(claim)
     conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks)
@@ -136,7 +136,7 @@ def _require[T](value: T | None, name: str) -> T:
     return value
 
 
-def _is_strong(hit: ArchiveHit, t: Thresholds) -> bool:
+def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool:
     by_hash = hit.phash_distance is not None and hit.phash_distance <= t.phash_max_distance
     by_embedding = hit.cosine is not None and hit.cosine >= t.cosine_min
     return by_hash or by_embedding
