@@ -36,7 +36,7 @@ def fetch(since: date) -> int:
             before = len(by_url)
             for article in fetch_source(client, source, since):
                 by_url.setdefault(str(article.url), article)
-            print(f"  {source.name}: {len(by_url) - before} articles")
+            print(f"  {source.base_url}: {len(by_url) - before} articles")
     with ARTICLES.open("w", encoding="utf-8") as handle:
         for article in sorted(by_url.values(), key=lambda a: a.published_at, reverse=True):
             handle.write(article.model_dump_json() + "\n")
