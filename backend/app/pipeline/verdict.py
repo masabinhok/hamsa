@@ -6,6 +6,7 @@ was not given. A check after parsing guards the same rule for any decoder.
 """
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Annotated, Any, Protocol
 
@@ -26,6 +27,12 @@ from app.pipeline.contracts import (
 from app.router.route import is_strong_match
 
 PASSAGE_CHARS = 900  # trims prompt tokens: Groq's free tier allows 8000 tokens/min
+# Evidence labels mean nothing to the public; the model was told, but still wrote
+# "Fact-check reports (E4, E5) show..." in a published rationale.
+# Bracketed groups like "(E4, E5)" are removed; a bare label in running text cannot be
+# removed without breaking the sentence, so the draft is rejected and rewritten.
+LABEL_GROUP = re.compile(r"\s*\(\s*E\d+(?:\s*(?:,|and|र)\s*E\d+)*\s*\)")
+BARE_LABEL = re.compile(r"\bE\d+\b")
 
 SYSTEM = f"""\
 You assess claims from social media posts about disasters in Nepal, for professional \
@@ -57,7 +64,8 @@ citations: every passage your decision relies on, by its label, with its stance 
 the claim: "supports" or "refutes". Cite nothing you did not use.
 confidence: your probability that the label is right, from 0 to 1.
 rationale_en: at most {RATIONALE_MAX_WORDS} words, plain English, naming the decisive \
-evidence. rationale_ne: the same rationale in Nepali (Devanagari), for the public.
+evidence by its source (e.g. "Nepal Factcheck"), never by its label: the public reads this. \
+rationale_ne: the same rationale in Nepali (Devanagari).
 """
 
 
@@ -140,6 +148,10 @@ def build_prompt(claim: Claim, media: MediaMatch, evidence: Evidence, has_media:
     return "\n".join(lines)
 
 
+def strip_labels(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", LABEL_GROUP.sub("", text)).strip()
+
+
 def judge(
     claim: Claim,
     media: MediaMatch,
@@ -163,6 +175,8 @@ def judge(
         ):
             if not text.strip():
                 return f"{name} is empty"
+            if BARE_LABEL.search(strip_labels(text)):
+                return f"{name} mentions evidence labels; name the sources instead"
             if len(text.split()) > RATIONALE_MAX_WORDS:
                 return f"{name} exceeds {RATIONALE_MAX_WORDS} words"
         return None
@@ -183,8 +197,8 @@ def judge(
         return Verdict(
             label=draft.label,
             confidence=draft.confidence,
-            rationale_en=draft.rationale_en,
-            rationale_ne=draft.rationale_ne,
+            rationale_en=strip_labels(draft.rationale_en),
+            rationale_ne=strip_labels(draft.rationale_ne),
             citations=[
                 Citation(passage_id=passage_ids[c.evidence], stance=c.stance)
                 for c in draft.citations
