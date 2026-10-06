@@ -13,6 +13,7 @@ from app.pipeline.retrieve import (
     EMBEDDING_DIM,
     MAX_PASSAGES,
     MAX_PER_ARTICLE,
+    MAX_PER_SOURCE,
     EvidenceStore,
     chunk,
     passage_id,
@@ -36,11 +37,18 @@ def fake_embed(texts: Sequence[str]) -> list[list[float]]:
     return vectors
 
 
-def article(slug: str, text: str, published: str, kind: SourceKind = SourceKind.NEWS) -> Article:
+def article(
+    slug: str,
+    text: str,
+    published: str,
+    kind: SourceKind = SourceKind.NEWS,
+    source: str | None = None,
+) -> Article:
+    default_source = "Nepal Factcheck" if kind is SourceKind.FACT_CHECK else f"Outlet {slug}"
     return Article.model_validate(
         {
             "url": f"https://news.test/{slug}",
-            "source": "Nepal Factcheck" if kind is SourceKind.FACT_CHECK else f"Outlet {slug}",
+            "source": source or default_source,
             "source_kind": kind,
             "language": "en",
             "title": slug,
@@ -153,3 +161,26 @@ def test_caps_passages_per_article_and_in_total(store: EvidenceStore) -> None:
 
 def test_empty_corpus_gives_empty_evidence(store: EvidenceStore) -> None:
     assert retrieve(claim(), store, fake_embed, since=INCIDENT).passages == []
+
+
+def test_one_publisher_cannot_fill_the_evidence(store: EvidenceStore) -> None:
+    prolific = [
+        article(
+            f"ok{i}", f"Rasuwa flood cause report {i}", "2026-08-27T09:00:00", source="Onlinekhabar"
+        )
+        for i in range(6)
+    ]
+    other = article("np", "Rasuwa flood cause", "2026-08-27T09:00:00", source="Nepalnews")
+    store.add([*prolific, other], fake_embed)
+
+    evidence = retrieve(claim(claim_en="Rasuwa flood cause"), store, fake_embed, since=INCIDENT)
+
+    sources = [p.source for p in evidence.passages]
+    assert sources.count("Onlinekhabar") == MAX_PER_SOURCE
+    assert "Nepalnews" in sources
+
+
+def test_passages_carry_their_headline(store: EvidenceStore) -> None:
+    store.add([article("debunk", "flood video is from Alaska", "2026-08-28T09:00:00")], fake_embed)
+    [found] = retrieve(claim(claim_en="flood video"), store, fake_embed, since=INCIDENT).passages
+    assert found.title == "debunk"

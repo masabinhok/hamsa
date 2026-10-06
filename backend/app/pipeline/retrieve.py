@@ -16,7 +16,10 @@ COLLECTION = "evidence_passages"
 EMBEDDING_DIM = 1024  # bge-m3 dense
 CHUNK_CHARS = 1200  # roughly 300 tokens of English; Nepali runs longer per token
 MAX_PASSAGES = 8
-MAX_PER_ARTICLE = 2  # keeps room for independent sources
+MAX_PER_ARTICLE = 2
+# Without this, one prolific outlet filled 7 of 8 slots for the Rasuwa claim and
+# crowded out other sources; independence is judged per publisher.
+MAX_PER_SOURCE = 3
 CANDIDATES_PER_QUERY = 20
 RRF_K = 60  # standard reciprocal-rank-fusion constant
 VISIBLE_TEXT_CHARS = 500
@@ -150,12 +153,18 @@ def retrieve(claim: Claim, store: EvidenceStore, embed: EmbedText, since: date) 
 
     passages: list[Passage] = []
     per_article: dict[str, int] = {}
+    per_source: dict[str, int] = {}
     for pid in sorted(scores, key=lambda p: scores[p], reverse=True):
         payload = payloads[pid]
         url: str = payload["url"]
-        if per_article.get(url, 0) >= MAX_PER_ARTICLE:
+        source: str = payload["source"]
+        if (
+            per_article.get(url, 0) >= MAX_PER_ARTICLE
+            or per_source.get(source, 0) >= MAX_PER_SOURCE
+        ):
             continue
         per_article[url] = per_article.get(url, 0) + 1
+        per_source[source] = per_source.get(source, 0) + 1
         passages.append(
             Passage.model_validate(
                 {
@@ -163,6 +172,7 @@ def retrieve(claim: Claim, store: EvidenceStore, embed: EmbedText, since: date) 
                     "source": payload["source"],
                     "source_kind": payload["source_kind"],
                     "url": url,
+                    "title": payload.get("title"),
                     "published_at": payload["published_at"],
                     "text": payload["text"],
                     "score": round(scores[pid], 5),

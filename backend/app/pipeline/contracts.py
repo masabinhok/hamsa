@@ -97,6 +97,8 @@ class Passage(Contract):
     source: NonEmptyStr  # outlet or body, e.g. "Kathmandu Post"; independence is per source
     source_kind: SourceKind
     url: HttpUrl
+    # Shown with the passage: a fact-check's headline usually states its verdict.
+    title: str | None = None
     published_at: datetime | None = None
     text: NonEmptyStr
     score: float

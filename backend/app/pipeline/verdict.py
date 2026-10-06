@@ -132,9 +132,10 @@ def build_prompt(claim: Claim, media: MediaMatch, evidence: Evidence, has_media:
         lines.append("none found")
     for label, passage in zip(labels_for(evidence), evidence.passages, strict=True):
         published = passage.published_at.date().isoformat() if passage.published_at else "undated"
+        title = f"Headline: {passage.title}\n" if passage.title else ""
         lines.append(
             f"[{label}] {passage.source} ({passage.source_kind}, {published})\n"
-            f"{passage.text[:PASSAGE_CHARS]}"
+            f"{title}{passage.text[:PASSAGE_CHARS]}"
         )
     return "\n".join(lines)
 
