@@ -184,8 +184,17 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built by `uv ru
 | `rationale_ne` | str | shown on the published verdict |
 | `citations` | list of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
 | `model` | str | which model produced it (Groq or fallback) |
+| `fallback` | bool | true when the local model judged because Groq was unavailable |
 
-The prompt gives the model only the evidence and match results, and instructs `unverifiable` when the evidence does not settle the claim. A citation to a passage that was not provided is treated as a hallucination: the output is rejected and retried once.
+Implemented in `backend/app/pipeline/verdict.py`, with clients in `backend/app/llm/groq.py` and `backend/app/llm/ollama.py`.
+
+- **Evidence only.** The prompt gives the model the claim, the archive matches (each marked strong or weak using the router's rule), and the evidence passages with their headlines. It instructs `unverifiable` whenever the passages do not address this specific claim. The post and the passages are marked as data, so instructions inside them are ignored.
+- **The implicit media claim.** A post with images or video claims that the media shows the event. The prompt tells the model to check that claim first: on-screen text naming another place, a fact-check of the same footage, or an archive match. On the real Rasuwa post this changed the verdict from "misleading, the cause is disputed" to "false, the video is from Columbia Glacier".
+- **Headlines.** Fact-check headlines usually state the verdict, so every passage is shown with its title.
+- **Citations cannot point at missing passages.** Passages are shown as `E1`..`E8`, and the JSON schema allows only those labels in `citations`, so under constrained decoding (Groq strict mode, Ollama `format`) an unseen passage cannot be cited. A post-parse check guards the same rule, plus the 120-word rationale limit; a violation gets one retry with the error shown.
+- **Fallback.** Groq first; on `ReasonerUnavailable` or invalid output twice, the local vision model drafts and `fallback` is set. The fallback is measurably weaker: on an invented claim it answered `false` at 0.98 because no passage mentioned the claim, where Groq answered `unverifiable`. So the router never fast-tracks a fallback verdict on model judgement alone (section 3.7).
+- **Cost.** About 2,900 prompt tokens and 400–600 completion tokens per verdict. Groq's free tier allows 8,000 tokens/min, so about two verdicts per minute.
+- **Variance.** Repeated runs at temperature 0 still vary: the Rasuwa post came back `false` 0.90, `misleading` 0.78, and `false` 0.92. All three were correct refuting labels citing the debunk, but only the last cleared the fast-track threshold. The eval set measures this variance; the router's thresholds absorb it.
 
 ### 3.7 Router (deterministic)
 
@@ -202,20 +211,26 @@ flowchart TD
     c -->|yes| x{Any conflicting signal?}
     x -->|no| r{Verdict false or misleading<br/>AND strong hit on prior footage?}
     r -->|yes| ft1[fast_track<br/>reason: recycled media]
-    r -->|no| w{Verdict false or misleading<br/>AND AI-tool watermark<br/>AND confidence ≥ 0.85?}
+    r -->|no| m{Verdict from the<br/>local fallback model?}
+    m -->|yes| n
+    m -->|no| w{Verdict false or misleading<br/>AND AI-tool watermark<br/>AND confidence ≥ 0.85?}
     w -->|yes| ft2[fast_track<br/>reason: AI-tool watermark]
-    w -->|no| e{Verdict not unverifiable<br/>AND confidence ≥ 0.85<br/>AND ≥ 2 independent agreeing sources?}
+    w -->|no| p{Confidence ≥ 0.85, not unverifiable,<br/>AND a cited fact-check agrees?}
+    p -->|yes| ft4[fast_track<br/>reason: prior fact-check]
+    p -->|no| e{Confidence ≥ 0.85, not unverifiable,<br/>AND ≥ 2 independent agreeing sources?}
     e -->|yes| ft3[fast_track<br/>reason: strong evidence]
     e -->|no| n
     x -->|yes| n{No evidence AND no archive hit?}
     n -->|yes| inv[investigate<br/>reason: new claim]
-    n -->|no| hr2[human_review<br/>reason: the conflict, or why confidence fell short]
+    n -->|no| hr2[human_review<br/>reason: the conflict, the fallback model,<br/>or why confidence fell short]
 ```
 
 **Definitions**
 - **Strong hit:** pHash distance of 16 or less, or SigLIP cosine of 0.97 or more (section 3.3). Only `prior` archive hits count as recycled evidence. A `verified_genuine` hit does not, because genuine footage can still carry a false caption.
 - **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
-- **Independent agreeing sources:** distinct outlets among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same outlet count once.
+- **Independent agreeing sources:** distinct publishers among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same publisher count once, and so do two editions of one outlet: Onlinekhabar's Nepali and English sites were first counted as two sources, which would have let the fallback model's wrong verdict fast-track.
+- **Prior fact-check:** a cited passage from a fact-checker whose stance matches the verdict. Catching already-debunked claims as they resurface is Hamsa's core job, so one agreeing fact-check is enough, with confidence and no conflict.
+- **Fallback verdicts** never fast-track on model judgement alone (watermark, fact-check, or evidence rules). Only the deterministic recycled-media rule can fast-track them.
 - **Conflicting signal:**
   - a `true` verdict with a strong `prior` hit
   - a `true` verdict with an AI-tool watermark
@@ -281,7 +296,7 @@ Checker edits are stored next to the model's draft. The disagreement rate is a p
 
 | Failure | Detection | Response |
 |---|---|---|
-| Groq rate limit (429) or 5xx | HTTP status | Retry twice, honouring `retry-after`, then fall back to the local model. `Verdict.model` records which model ran. |
+| Groq rate limit (429) or 5xx | HTTP status | 429: wait for `retry-after` if it is 30 s or less (the free tier typically says about 7 s), up to 3 attempts. 5xx: retry with backoff. Then fall back to the local model, with `Verdict.fallback` set. |
 | No Groq key | config | Local model for every verdict. |
 | Invalid JSON or a schema violation | Pydantic | Retry once with the validation error in the prompt, then mark the stage failed and send the case to `human_review`. |
 | Hallucinated citation | id not in the input | Same as invalid JSON. |
@@ -308,6 +323,8 @@ Measured on the target machine (RTX 4060 Laptop, 8 GB VRAM, 16 GB RAM) on 2026-1
 - **Raising `num_ctx` to 16384 pushes 39% onto the CPU,** so it stays at 8192.
 - **`qwen3-vl:4b` is the fallback option** if extraction quality is equal on the eval set.
 - **The local verdict fallback reuses the vision model** rather than loading a second model, to avoid swapping weights in and out of the GPU.
+
+**End to end**, the real Rasuwa post (85 s video, Groq verdict, models warm) takes about **17.5 s**: ingest 0.9, extract 12.3, media match 1.2, retrieve 0.5, verdict 2.6. A text-only post takes about 10 s. Run it with `uv run python -m app.pipeline <media> --text "<post>"`.
 
 ## 8. Evaluation
 
