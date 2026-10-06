@@ -41,10 +41,15 @@ REFUTING_LABELS = (VerdictLabel.FALSE, VerdictLabel.MISLEADING)
 
 @dataclass(frozen=True)
 class Thresholds:
-    """Starting values; tuned on the eval tuning split for fast-track precision >= 0.95."""
+    """Starting values; tuned on the eval tuning split for fast-track precision >= 0.95.
 
-    phash_max_distance: int = 10
-    cosine_min: float = 0.90
+    Media values come from a robustness check on Creative Commons flood photos
+    (docs/architecture.md 3.3): edited reposts scored pHash <= 15 or cosine >= 0.974,
+    different photos of the same river scored pHash >= 26 and cosine up to 0.946.
+    """
+
+    phash_max_distance: int = 16
+    cosine_min: float = 0.97
     fast_track_confidence: float = 0.85
     min_independent_sources: int = 2
 
