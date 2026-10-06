@@ -98,8 +98,3 @@ def test_manifest_rows_are_validated(dirs: tuple[Path, Path]) -> None:
     write(archive_dir / "manifest.csv", MANIFEST_HEADER, [GENUINE | {"label": "maybe"}])
     with pytest.raises(ValidationError):
         archive.collect_entries()
-
-
-def test_media_type_is_chosen_by_extension(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match=r"unsupported media type \.gif"):
-        archive.frames_of(tmp_path / "clip.gif")

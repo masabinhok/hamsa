@@ -17,11 +17,24 @@ MAX_SAMPLES = 600  # five minutes of video at 2 samples per second
 SCENE_CHANGE = 18.0
 
 
+IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".webm", ".mkv", ".m4v"})
+
+
 @dataclass(frozen=True)
 class Frame:
     index: int
     timestamp_s: float
     image: Image.Image
+
+
+def frames_of(path: Path) -> list[Frame]:
+    suffix = path.suffix.lower()
+    if suffix in IMAGE_SUFFIXES:
+        return frames_from_image(path)
+    if suffix in VIDEO_SUFFIXES:
+        return keyframes_from_video(path)
+    raise ValueError(f"unsupported media type {suffix}")
 
 
 def frames_from_image(path: Path) -> list[Frame]:

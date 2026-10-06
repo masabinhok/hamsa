@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from app.config import get_settings
-from app.ingest.frames import Frame, frames_from_image, keyframes_from_video
+from app.ingest.frames import Frame, frames_of
 from app.llm.ollama import OllamaClient
 from app.pipeline.contracts import Claim
 
@@ -63,10 +63,7 @@ def main() -> int:
     parser.add_argument("--text")
     args = parser.parse_args()
 
-    frames: list[Frame] = []
-    if args.media:
-        is_image = args.media.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
-        frames = frames_from_image(args.media) if is_image else keyframes_from_video(args.media)
+    frames = frames_of(args.media) if args.media else []
 
     settings = get_settings()
     client = OllamaClient(str(settings.ollama_host))
