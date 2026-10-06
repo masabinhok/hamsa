@@ -24,5 +24,5 @@ Hamsa is a fact-check triage desk for Nepali disaster misinformation, built solo
 ## Git
 - Git-flow: `main` (releases), `develop` (integration), `feature/*`, `chore/*`, `fix/*`, `docs/*`.
 - Conventional commits, all lowercase, no emojis, no co-author or tool attribution lines.
-- Commit freely on feature branches; the owner reviews the branch before it merges into `develop` with `--no-ff`.
+- Commit freely on feature branches; once lint, types, and tests pass, merge into `develop` with `--no-ff` (no per-branch owner review).
 - Never push to the remote until the owner says so.
