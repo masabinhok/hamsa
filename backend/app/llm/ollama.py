@@ -87,6 +87,23 @@ class OllamaClient:
         except ValidationError as second:
             raise StructuredOutputError(f"invalid after retry: {second}") from second
 
+    def embed(self, model: str, texts: Sequence[str], *, batch: bool = False) -> list[list[float]]:
+        """Embeddings. Per-case queries run on the CPU, leaving the GPU to the vision model;
+        offline corpus indexing (`batch=True`) uses the GPU and unloads right after (ADR 0007).
+        """
+        response = self._http.post(
+            "/api/embed",
+            json={
+                "model": model,
+                "input": list(texts),
+                "keep_alive": "0" if batch else KEEP_ALIVE,
+                "options": {} if batch else {"num_gpu": 0},
+            },
+        )
+        response.raise_for_status()
+        body: dict[str, Any] = response.json()
+        return body["embeddings"]
+
     def _chat(self, model: str, messages: list[dict[str, Any]], schema: dict[str, Any]) -> str:
         response = self._http.post(
             "/api/chat",
