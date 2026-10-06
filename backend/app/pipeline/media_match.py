@@ -93,9 +93,21 @@ class SiglipEmbedder:
         if self._model is None:
             # The checkpoint includes the text tower we skip; its load report is noise.
             transformers_logging.set_verbosity_error()
-            self._processor = cast(Any, AutoImageProcessor.from_pretrained(self._model_name))  # pyright: ignore[reportUnknownMemberType]
-            self._model = SiglipVisionModel.from_pretrained(self._model_name).eval()  # pyright: ignore[reportUnknownMemberType]
+            # Cache first: an online revision check stalled one pipeline run for 90 s.
+            try:
+                self._processor, self._model = self._from_pretrained(local_files_only=True)
+            except OSError:
+                self._processor, self._model = self._from_pretrained(local_files_only=False)
         return self._processor, self._model
+
+    def _from_pretrained(self, *, local_files_only: bool) -> tuple[Any, Any]:
+        name = self._model_name
+        processor = cast(
+            Any,
+            AutoImageProcessor.from_pretrained(name, local_files_only=local_files_only),  # pyright: ignore[reportUnknownMemberType]
+        )
+        model = SiglipVisionModel.from_pretrained(name, local_files_only=local_files_only)  # pyright: ignore[reportUnknownMemberType]
+        return processor, model.eval()
 
 
 @dataclass(frozen=True)
