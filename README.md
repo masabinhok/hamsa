@@ -84,7 +84,25 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 
 ## Running locally
 
-*(Instructions coming in Week 2.)* Requirements: Python 3.12+, uv, Docker, Ollama, an NVIDIA GPU with 8 GB VRAM (recommended), and a free Groq API key (optional: without it, verdicts run on the local model).
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](https://ollama.com), an NVIDIA GPU with 8 GB VRAM (recommended), and a free [Groq](https://console.groq.com) API key (optional: without it, verdicts run on the local model).
+
+```bash
+docker compose up -d                          # Qdrant
+ollama pull qwen3-vl:8b-instruct && ollama pull bge-m3
+cp .env.example .env                          # set GROQ_API_KEY and DESK_TOKEN
+
+cd backend && uv sync
+uv run python -m app.corpus fetch             # trusted articles, ~1 min
+uv run python -m app.corpus index             # embed into Qdrant, ~15 min on the GPU
+uv run python -m app.archive                  # media archive from data/archive and eval originals
+
+uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
+
+uv run uvicorn --factory app.api.main:default_app         # API on :8000
+uv run python -m app.worker                               # in a second terminal
+```
+
+Submit with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer $DESK_TOKEN`. Interactive API docs: `localhost:8000/docs`.
 
 ## Evaluation
 
