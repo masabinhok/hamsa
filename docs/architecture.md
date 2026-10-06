@@ -91,7 +91,15 @@ Each stage returns a Pydantic model. Model outputs are requested with a JSON sch
 | `handles` | list of str | desk (provenance), dedup |
 | `checkable` | bool | router: opinions and prayers are not checkable |
 
-The prompt asks for exactly what is visible or stated, never inferred. Every field may be empty except `claim`. Settings: temperature 0, `num_ctx` 8192.
+Implemented in `backend/app/pipeline/extract.py`, with the Ollama client in `backend/app/llm/ollama.py`.
+
+- **What the prompt asks for:** exactly what is stated or visible, never inferred. Every field may be empty except `claim`. Settings: temperature 0, `num_ctx` 8192.
+- **The schema sent to Ollama marks every field required.** Constrained decoding lets a model leave out optional fields, and in testing it dropped places, numbers, and handles from a post that had all three. Required fields force an explicit decision for each: an empty list or null.
+- **Validation:** the output is validated with Pydantic. On failure the model sees the validation error and gets one retry, then the stage fails and the case goes to `human_review`.
+- **Measured on a real viral post** (the Rasuwa/Columbia Glacier video debunked by Nepal Factcheck, 85 s, 6 keyframes): about 18 s.
+  - The Nepali claim was kept in Devanagari, with an accurate English translation.
+  - The decisive on-screen text ("I've been studying this event on Columbia Glacier for 15 years") was transcribed verbatim.
+  - The channel logo was misread by one character ("मुनौलो" for "सुनौलो"). Small Devanagari text in logos is a known OCR weakness.
 
 ### 3.3 Media match (pHash + SigLIP, CPU)
 
@@ -117,7 +125,7 @@ Candidates from both searches get both scores. Each archive item keeps its best 
 | **Letterbox with blurred background (TikTok style)** | 26–30 | 0.91–0.95 | **no** |
 | *Different photo, same river* | 28–32 | up to **0.947** | no (correct) |
 
-The table shows why SigLIP cannot decide on its own. A different photo of the same river scores *higher* cosine than some genuine reposts, so cosine alone means "same kind of scene", not "same footage". At these thresholds the check matched 17 of 20 edited reposts with 0 false matches out of 5. **Blurred-background letterboxes are a known gap:** a gradient-based trim was tried, and it also cut off caption banners. It is a candidate for future work, judged on eval data.
+The table shows why SigLIP cannot decide on its own. A different photo of the same river scores *higher* cosine than some genuine reposts, so cosine alone means "same kind of scene", not "same footage". At these thresholds the check matched 17 of 20 edited reposts with 0 false matches out of 5. **Blurred-background letterboxes are a known gap,** and a common one: the first real viral post tested (Rasuwa, above) uses exactly this format. A gradient-based trim was tried, and it also cut off caption banners. Fixing this is the top media-match priority once the eval set has real examples.
 
 Each archive item carries a label:
 - **`prior`:** footage from before the incident, or from elsewhere.
