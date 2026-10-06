@@ -98,9 +98,26 @@ The prompt asks for exactly what is visible or stated, never inferred. Every fie
 **In:** the case's `MediaAsset`s.
 **Out:** `MediaMatch` with a list of `ArchiveHit`s (`archive_id`, `frame`, `phash_distance`, `cosine`, `original_context`, `original_date`, `source_url`, `archive_label`).
 
-Two tiers ([ADR 0003](adr/0003-two-tier-media-matching.md)):
-1. **pHash**, a 64-bit perceptual hash per frame. A Hamming distance of 10 or less counts as the same image. *Starting value.*
-2. **SigLIP** image embeddings, searched in Qdrant. A cosine similarity of 0.90 or more is a near-duplicate (crops, re-encodes, overlays). *Starting value.*
+Implemented in `backend/app/pipeline/media_match.py` ([ADR 0003](adr/0003-two-tier-media-matching.md)). Every frame, both archive and submitted, goes through the same steps:
+
+1. **Canonicalise.** Trim uniform borders, such as letterbox bars and screenshot chrome, which reposts add and pHash is sensitive to.
+2. **pHash.** A 64-bit perceptual hash, stored in Qdrant as a +1/-1 vector. For such vectors, dot product = 64 − 2 × Hamming distance, so Qdrant's dot-product search ranks by exact Hamming distance. Submitted frames are also hashed mirrored, and the smaller distance counts.
+3. **SigLIP 2** (`google/siglip2-base-patch16-224`, vision tower on the CPU). A normalised embedding, searched by cosine.
+
+Candidates from both searches get both scores. Each archive item keeps its best hit across all submitted frames.
+
+**A hit is strong if pHash distance ≤ 16 or cosine ≥ 0.97.** These are *starting values* from a robustness check on Creative Commons flood photos (`uv run python -m app.eval.media_robustness`, run 2026-10-06):
+
+| Case | pHash distance | Cosine | Strong? |
+|---|---|---|---|
+| Re-encoded, resized, cropped to 90%, mirrored, black letterbox | 0–8 | 0.97–1.00 | yes |
+| Cropped to 70% | 18–22 | 0.97–0.98 | yes, by cosine |
+| Caption banner, mirrored plus caption | 0–14 | 0.91–0.96 | yes, by pHash |
+| Phone screenshot with status bar | 12–18 | 0.91–0.94 | 1 of 2 |
+| **Letterbox with blurred background (TikTok style)** | 26–30 | 0.91–0.95 | **no** |
+| *Different photo, same river* | 28–32 | up to **0.947** | no (correct) |
+
+The table shows why SigLIP cannot decide on its own. A different photo of the same river scores *higher* cosine than some genuine reposts, so cosine alone means "same kind of scene", not "same footage". At these thresholds the check matched 17 of 20 edited reposts with 0 false matches out of 5. **Blurred-background letterboxes are a known gap:** a gradient-based trim was tried, and it also cut off caption banners. It is a candidate for future work, judged on eval data.
 
 Each archive item carries a label:
 - **`prior`:** footage from before the incident, or from elsewhere.
@@ -168,7 +185,7 @@ flowchart TD
 ```
 
 **Definitions**
-- **Strong hit:** pHash distance of 10 or less, or SigLIP cosine of 0.90 or more. Only `prior` archive hits count as recycled evidence. A `verified_genuine` hit does not, because genuine footage can still carry a false caption.
+- **Strong hit:** pHash distance of 16 or less, or SigLIP cosine of 0.97 or more (section 3.3). Only `prior` archive hits count as recycled evidence. A `verified_genuine` hit does not, because genuine footage can still carry a false caption.
 - **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
 - **Independent agreeing sources:** distinct outlets among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same outlet count once.
 - **Conflicting signal:**
@@ -289,10 +306,11 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 |---|---|
 | Settings | `backend/app/config.py` |
 | HTTP API | `backend/app/api/` |
-| Ingest, keyframes, URL fetch | `backend/app/ingest/` |
+| Ingest, keyframes (`frames.py`), URL fetch | `backend/app/ingest/` |
 | Pipeline stages and their models | `backend/app/pipeline/` (`extract.py`, `media_match.py`, `dedup.py`, `retrieve.py`, `verdict.py`) |
 | Router | `backend/app/router/route.py` |
 | Case store, jobs, events | `backend/app/store/` |
 | Eval set and scoring | `backend/app/eval/` |
-| Corpus and archive ingestion | `scripts/` |
+| Archive build (`uv run python -m app.archive`) | `backend/app/archive.py` |
+| Evidence corpus ingestion | `scripts/` |
 | Checker desk, submit form, feed | `frontend/` |

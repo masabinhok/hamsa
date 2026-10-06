@@ -60,3 +60,25 @@ For **true** items, collect genuine flood footage that a credible outlet publish
 - **Media stays local.** `data/eval/media/` is gitignored because these are other people's posts. Only labels and links are committed.
 - **Skip posts that expose private people**, such as identifiable children or victims' personal details, unless the media is already widely published by news outlets.
 - **Hold out a test split.** We tune on `h001` to `h040` and report final numbers on `h041` onward, which we will not look at while tuning.
+
+## The media archive
+
+Media matching compares submitted posts against an archive of footage with a known origin. The archive builds itself from two places:
+
+1. **Originals of recycled eval items.** If a row has `tactic=recycled` and `original_media_file`, the original goes into the archive as `prior` footage automatically. Nothing extra to do.
+2. **`data/archive/manifest.csv`** for everything else. Put files in `data/archive/media/` (gitignored) and add a row:
+
+| Column | Notes |
+|---|---|
+| `archive_id` | lowercase with dashes, e.g. `kullu-flood-2023-bridge` |
+| `media_file` | file name in `data/archive/media/` |
+| `label` | `prior` (older or elsewhere) or `verified_genuine` (confirmed footage of this incident) |
+| `original_context` | what it really shows, e.g. `2023 Himachal Pradesh floods, Kullu` |
+| `original_date` | `YYYY-MM-DD` if known |
+| `source_url` | where it was first published |
+
+Worth adding: **verified genuine flood footage** from news outlets and official pages (so real posts can be confirmed, not just fakes debunked), and **well-known older disaster clips** that tend to resurface (Kullu 2023, Melamchi 2021, Kerala 2018, the Columbia Glacier videos).
+
+Then rebuild: `cd backend && uv run python -m app.archive` (Qdrant must be running: `docker compose up -d`).
+
+**Never put eval posts themselves in the archive.** The archive is what Hamsa knows beforehand. A post matching itself proves nothing.
