@@ -10,6 +10,7 @@ from app.pipeline.verdict import (
     build_prompt,
     draft_schema,
     judge,
+    strip_labels,
 )
 from tests.factories import claim, hit, passage
 
@@ -156,3 +157,28 @@ def test_every_reasoner_failing_raises_with_each_reason() -> None:
             [(primary, "gpt-oss"), (local, "qwen3-vl")],
             has_media=False,
         )
+
+
+@pytest.mark.parametrize(
+    ("text", "clean"),
+    [
+        ("Fact-check reports (E4, E5) show it.", "Fact-check reports show it."),
+        ("Experts (E2 and E8) agree.", "Experts agree."),
+        ("रिपोर्ट (E1) अनुसार", "रिपोर्ट अनुसार"),
+        ("No labels here.", "No labels here."),
+    ],
+)
+def test_bracketed_evidence_labels_are_stripped(text: str, clean: str) -> None:
+    assert strip_labels(text) == clean
+
+
+def test_published_rationale_never_carries_labels() -> None:
+    reasoner = FakeReasoner(draft(rationale_en="Nepal Factcheck (E1) traced it to Alaska."))
+    verdict = judge(claim(), MediaMatch(), EVIDENCE, [(reasoner, "gpt-oss")], has_media=True)
+    assert verdict.rationale_en == "Nepal Factcheck traced it to Alaska."
+
+
+def test_bare_label_in_running_text_is_rejected_for_rewrite() -> None:
+    reasoner = FakeReasoner(draft(rationale_en="As E1 shows, the video is old."))
+    with pytest.raises(StructuredOutputError, match="mentions evidence labels"):
+        judge(claim(), MediaMatch(), EVIDENCE, [(reasoner, "gpt-oss")], has_media=True)

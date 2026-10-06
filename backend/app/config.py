@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     embedding_model: str = "bge-m3"
 
     qdrant_url: AnyHttpUrl = AnyHttpUrl("http://localhost:6333")
+    database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'hamsa.db'}"
+    media_root: Path = REPO_ROOT / "data" / "cases"
+
+    # Shared secret for the checker desk; the desk API is disabled while unset.
+    desk_token: SecretStr | None = None
+    frontend_origin: str = "http://localhost:3000"
 
     # The disaster this deployment covers. News before this date cannot describe it;
     # fact-checks of any date still count (architecture 3.5).

@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+import httpx
+from qdrant_client.http.exceptions import ResponseHandlingException
+
 from app.ingest.frames import Frame, frames_of
 from app.pipeline.contracts import (
     Claim,
@@ -46,6 +49,13 @@ class Result:
     seconds: dict[str, float] = field(default_factory=dict[str, float])
 
 
+def is_transient(error: Exception) -> bool:
+    """A local service was unreachable or overloaded, so retrying later may succeed."""
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code >= 500
+    return isinstance(error, httpx.TransportError | ResponseHandlingException | ConnectionError)
+
+
 def run(pipeline: Pipeline, text: str | None, media: Sequence[Path]) -> Result:
     seconds: dict[str, float] = {}
     failures: list[StageFailure] = []
@@ -55,7 +65,13 @@ def run(pipeline: Pipeline, text: str | None, media: Sequence[Path]) -> Result:
         try:
             return work()
         except Exception as error:  # every stage error becomes a recorded failure
-            failures.append(StageFailure(stage=name, error=f"{type(error).__name__}: {error}"))
+            failures.append(
+                StageFailure(
+                    stage=name,
+                    error=f"{type(error).__name__}: {error}",
+                    transient=is_transient(error),
+                )
+            )
             return None
         finally:
             seconds[name.value] = round(time.monotonic() - started, 2)
