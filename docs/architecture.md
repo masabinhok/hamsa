@@ -146,10 +146,30 @@ A duplicate is merged under the existing case, which strengthens its virality si
 **In:** `Claim`.
 **Out:** `Evidence`, a list of up to 8 `Passage`s (`passage_id`, `source`, `source_kind`, `url`, `published_at`, `text`, `score`).
 
-- **Corpus:** a scheduled ingestor reads RSS and article pages from trusted sources (Nepali and English news outlets, government bodies, fact-checkers), splits them into chunks of about 300 tokens, and embeds each chunk.
-- **Query:** one query on `claim_en` and one on `claim`, merged by reciprocal rank. This catches matches across Nepali and English.
-- **Prior fact-checks:** passages from fact-checkers have `source_kind = fact_check`. A prior fact-check of the same claim is the strongest single evidence signal.
-- **Recency:** only passages published on or after the incident start are used, except fact-checks.
+Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built by `uv run python -m app.corpus fetch` and then `index`.
+
+- **Sources:** WordPress REST APIs, which return clean full article text. Onlinekhabar (Nepali and English), Nepalnews, and Nepal Factcheck.
+  - News is fetched from a week before the incident, limited to disaster terms (बाढी, पहिरो, डुबान, हिमताल; flood, landslide, GLOF, inundation).
+  - Fact-checks are fetched from all time, because recycled clips are often debunked years earlier.
+  - Other outlets either have no article API (RSS without history) or block automated access. They can be added the same way when they do.
+- **Corpus as of 2026-10-06:** 5,365 articles, 15,065 passages.
+- **Chunking:** paragraphs packed into chunks of at most 1,200 characters, splitting long paragraphs at sentence ends (`।` and `.`). The article title is prepended to each chunk before embedding.
+- **Indexing** is an offline batch job on the GPU, with 4 concurrent requests: about 19 passages/s, so roughly 14 minutes for the full corpus. The CPU would take about 2 hours at 2.2 passages/s. CPU and GPU embeddings are identical (cosine 1.0), so per-case queries run on the CPU against a GPU-built index.
+- **Queries:** three queries, merged with reciprocal rank fusion (k = 60): the original-language claim, the English claim, and the on-screen text. On-screen text often names the true origin, such as "Columbia Glacier".
+- **Recency:** news counts only from the incident start (`INCIDENT_START`). Fact-checks of any date count.
+- **Diversity:** at most 2 passages per article and 8 in total, so the verdict sees independent sources.
+- **Prior fact-checks:** fact-checker passages have `source_kind = fact_check`. A prior fact-check of the same claim is the strongest single evidence signal.
+
+**Measured on 2026-10-06** (0.3 s per claim warm, 2 s cold):
+
+| Claim | Outcome |
+|---|---|
+| Rasuwa GLOF video (debunked by Nepal Factcheck) | The debunk ranks 3rd, alongside news on the real cause (a Langtang rockfall) |
+| "Butwal flooding" video (debunked by Nepal Factcheck) | The debunk ranks 1st |
+| "24 rescued from the Chilime tunnel" (debunked by Techpana, not in the corpus) | News reporting people still trapped, which is the evidence that refutes it |
+| "Melamchi bazaar swept away, 50 missing" (invented) | No Melamchi evidence, only real Rasuwa coverage, so the verdict should be `unverifiable` |
+
+**Evaluation caveat:** the corpus contains published fact-checks, including those for eval items. That is the realistic case, since Hamsa's main job is catching claims that are already debunked as they resurface. But it flatters verdict accuracy, so the eval also reports a run with fact-check passages excluded.
 
 ### 3.6 Verdict (gpt-oss-120b on Groq, local fallback)
 

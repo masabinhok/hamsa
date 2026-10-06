@@ -79,7 +79,7 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 |---|---|---|
 | Claim extraction | Qwen3-VL-8B (Ollama, local) | `extract_claim` in `backend/app/pipeline/extract.py` → `Claim` JSON: its text and places become retrieval queries and the dedup key; its `watermarks` and `checkable` fields drive rules in `backend/app/router/route.py` |
 | Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media |
-| Evidence retrieval | bge-m3 | `backend/app/pipeline/retrieve.py` → evidence passed to the reasoning step |
+| Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing) | `retrieve` in `backend/app/pipeline/retrieve.py` → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
 | Verdict | gpt-oss-120b | `backend/app/pipeline/verdict.py` → verdict and confidence drive `backend/app/router/route.py` |
 
 ## Running locally
