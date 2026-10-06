@@ -15,7 +15,7 @@ Verification is slow because every claim repeats the same manual steps: figure o
 A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post, image, or video. Hamsa then:
 
 1. **Extracts the claim.** Qwen3-VL reads the post and its frames and outputs structured JSON: claim, place, date claimed, numbers, and any watermarks or usernames visible in the frames.
-2. **Checks whether the media is recycled.** Perceptual hashing catches exact reposts, and SigLIP embeddings catch crops and edits, both matched against an archive of past disaster footage from Nepal and abroad.
+2. **Checks whether the media is recycled.** Perceptual hashing catches reposts even when re-encoded, mirrored, letterboxed, or captioned, and SigLIP embeddings catch heavier crops, both matched against an archive of past disaster footage from Nepal and abroad.
 3. **Retrieves evidence.** bge-m3 cross-lingual search (Nepali ↔ English) over trusted news and official sources.
 4. **Drafts a verdict.** gpt-oss-120b reasons over the evidence and returns a verdict, a confidence score, and citations as JSON.
 5. **Routes the case.** The router acts on the AI's outputs: it auto-merges duplicate claims, fast-tracks high-confidence recycled media, sends ambiguous cases to a human checker with side-by-side evidence, and queues new claims for investigation.
@@ -63,7 +63,7 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Vision + extraction | Qwen3-VL-8B via Ollama (local) | Open-weight (Apache 2.0) |
 | Reasoning | gpt-oss-120b via Groq free tier; fallback Qwen3-VL-8B local | Open-weight (Apache 2.0) |
 | Text embeddings | bge-m3 | Open (MIT) |
-| Image embeddings | SigLIP | Open (Apache 2.0) |
+| Image embeddings | SigLIP 2 base | Open (Apache 2.0) |
 | Near-duplicate hashing | imagehash (pHash) | Open source |
 | Vector DB | Qdrant (Docker) | Open source |
 | Backend | Python, FastAPI | Open source |
@@ -78,7 +78,7 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | AI step | Model | Where the output is consumed |
 |---|---|---|
 | Claim extraction | Qwen3-VL-8B | `backend/app/pipeline/extract.py` → JSON feeds retrieval queries and dedup |
-| Media match | SigLIP | `backend/app/pipeline/media_match.py` → scores feed the router |
+| Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media |
 | Evidence retrieval | bge-m3 | `backend/app/pipeline/retrieve.py` → evidence passed to the reasoning step |
 | Verdict | gpt-oss-120b | `backend/app/pipeline/verdict.py` → verdict and confidence drive `backend/app/router/route.py` |
 
@@ -94,6 +94,7 @@ A labelled set of known debunked items and genuine items from the August 2026 fl
 
 - Does not detect synthetic (AI-generated) media at the pixel level.
 - Accuracy depends on how complete the archive is: brand-new footage can't be matched against anything.
+- Reposts letterboxed with a blurred copy of the video (common on TikTok) are not yet matched; black bars, crops, mirroring, captions, and screenshots are ([measurements](docs/architecture.md#33-media-match-phash--siglip-cpu)).
 - Nepali OCR on low-quality video frames is imperfect.
 - Future work: a browser extension for newsrooms, more languages (Maithili, Bhojpuri), and a public verdict feed.
 

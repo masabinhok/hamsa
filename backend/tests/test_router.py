@@ -76,11 +76,13 @@ def test_strong_prior_match_with_false_verdict_is_fast_tracked() -> None:
 @pytest.mark.parametrize(
     ("phash_distance", "cosine", "strong"),
     [
-        (10, None, True),
-        (11, None, False),
-        (None, 0.90, True),
-        (None, 0.8999, False),
-        (30, 0.95, True),
+        (16, None, True),
+        (17, None, False),
+        (None, 0.97, True),
+        (None, 0.9699, False),
+        (30, 0.98, True),
+        # Measured: a different photo of the same river. Must never count as recycled.
+        (26, 0.946, False),
     ],
 )
 def test_match_strength_boundaries(

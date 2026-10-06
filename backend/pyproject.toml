@@ -5,7 +5,14 @@ description = "Fact-check triage desk for Nepali disaster misinformation, on ope
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
+    "av>=19.0.1",
+    "imagehash>=4.3.2",
+    "numpy>=2.5.3",
+    "pillow>=12.3.0",
     "pydantic-settings>=2.15.0",
+    "qdrant-client>=1.19.1",
+    "torch>=2.14.1",
+    "transformers>=5.18.0",
 ]
 
 [dependency-groups]
@@ -47,3 +54,12 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config", "-ra"]
 xfail_strict = true
+
+# CPU-only torch: SigLIP runs on the CPU (ADR 0007), and CUDA wheels add ~2 GB.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
