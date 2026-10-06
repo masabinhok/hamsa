@@ -97,3 +97,30 @@ def test_invalid_twice_raises() -> None:
 def test_server_error_is_raised_for_the_worker_to_retry() -> None:
     with pytest.raises(httpx.HTTPStatusError):
         call(client_for(FakeOllama(500)))
+
+
+class FakeEmbed:
+    def __init__(self) -> None:
+        self.bodies: list[dict[str, Any]] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        self.bodies.append(body)
+        return httpx.Response(200, json={"embeddings": [[0.1, 0.2] for _ in body["input"]]})
+
+
+@pytest.mark.parametrize(
+    ("batch", "options", "keep_alive"),
+    [(False, {"num_gpu": 0}, KEEP_ALIVE), (True, {}, "0")],
+    ids=["query-on-cpu", "batch-on-gpu-then-unload"],
+)
+def test_embed_device_and_lifetime(batch: bool, options: dict[str, int], keep_alive: str) -> None:
+    fake = FakeEmbed()
+    http = httpx.Client(base_url="http://ollama.test", transport=httpx.MockTransport(fake))
+
+    vectors = OllamaClient("http://ollama.test", http=http).embed("bge-m3", ["a", "b"], batch=batch)
+
+    assert vectors == [[0.1, 0.2], [0.1, 0.2]]
+    [body] = fake.bodies
+    assert body["options"] == options
+    assert body["keep_alive"] == keep_alive

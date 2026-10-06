@@ -26,3 +26,4 @@ Hamsa is a fact-check triage desk for Nepali disaster misinformation, built solo
 - Conventional commits, all lowercase, no emojis, no co-author or tool attribution lines.
 - Commit freely on feature branches; once lint, types, and tests pass, merge into `develop` with `--no-ff` (no per-branch owner review).
 - Never push to the remote until the owner says so.
+- Pre-commit stashes unstaged changes but leaves untracked files on disk, so pyright checks a tree that will not exist. Commit in dependency order, never hide commit output, and check each commit landed. If history gets tangled, stash everything (`git stash -u`) and restore files commit by commit.
