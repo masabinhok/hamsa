@@ -17,14 +17,12 @@ from qdrant_client import QdrantClient
 
 from app.config import REPO_ROOT, get_settings
 from app.eval.dataset import Tactic, load_items
-from app.ingest.frames import Frame, frames_from_image, keyframes_from_video
+from app.ingest.frames import frames_of
 from app.pipeline.contracts import ArchiveLabel
 from app.pipeline.media_match import ArchiveEntry, ArchiveIndex, SiglipEmbedder
 
 ARCHIVE_DIR = REPO_ROOT / "data" / "archive"
 EVAL_DIR = REPO_ROOT / "data" / "eval"
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
-VIDEO_SUFFIXES = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 
 
 def _blank_to_none(value: object) -> object:
@@ -75,15 +73,6 @@ def collect_entries() -> list[tuple[ArchiveEntry, Path]]:
     if duplicates := sorted({i for i in ids if ids.count(i) > 1}):
         raise ValueError(f"duplicate archive ids: {', '.join(duplicates)}")
     return entries
-
-
-def frames_of(path: Path) -> list[Frame]:
-    suffix = path.suffix.lower()
-    if suffix in IMAGE_SUFFIXES:
-        return frames_from_image(path)
-    if suffix in VIDEO_SUFFIXES:
-        return keyframes_from_video(path)
-    raise ValueError(f"unsupported media type {suffix}")
 
 
 def main() -> int:

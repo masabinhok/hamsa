@@ -12,37 +12,14 @@ from typing import Any
 
 import httpx
 from PIL import Image
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
+
+from app.llm.structured import Check, Messages, call_with_retry, required_schema
 
 KEEP_ALIVE = "30m"  # keeps the vision model resident between cases (ADR 0007)
 NUM_CTX = 8192  # 16k spills 39% of the 8B model to the CPU (architecture section 7)
 TIMEOUT_S = 300.0
 JPEG_QUALITY = 90
-
-
-class StructuredOutputError(Exception):
-    """The model's output failed validation twice."""
-
-
-def required_schema[T: BaseModel](model: type[T]) -> dict[str, Any]:
-    """The model's JSON schema with every property required.
-
-    Constrained decoding lets a model omit optional properties, and it does: in testing,
-    places, numbers, and handles were dropped from a post that had all three. Requiring
-    them makes the model decide explicitly (an empty list or null) for each one.
-    """
-    schema = model.model_json_schema()
-
-    def require_all(node: dict[str, Any]) -> None:
-        if "properties" in node:
-            node["required"] = list(node["properties"])
-            for prop in node["properties"].values():
-                prop.pop("default", None)
-        for definition in node.get("$defs", {}).values():
-            require_all(definition)
-
-    require_all(schema)
-    return schema
 
 
 def encode_image(image: Image.Image) -> str:
@@ -62,30 +39,17 @@ class OllamaClient:
         system: str,
         prompt: str,
         images: Sequence[Image.Image] = (),
+        schema: dict[str, Any] | None = None,
+        check: Check | None = None,
     ) -> T:
-        """Chat once; on a validation error, retry once with the error shown to the model."""
-        messages: list[dict[str, Any]] = [
+        messages: Messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt, "images": [encode_image(i) for i in images]},
         ]
-        schema = required_schema(output)
-        content = self._chat(model, messages, schema)
-        try:
-            return output.model_validate_json(content)
-        except ValidationError as first:
-            messages += [
-                {"role": "assistant", "content": content},
-                {
-                    "role": "user",
-                    "content": "That output is invalid:\n"
-                    f"{first}\nReturn corrected JSON for the same post.",
-                },
-            ]
-        content = self._chat(model, messages, schema)
-        try:
-            return output.model_validate_json(content)
-        except ValidationError as second:
-            raise StructuredOutputError(f"invalid after retry: {second}") from second
+        format_schema = schema or required_schema(output)
+        return call_with_retry(
+            lambda m: self._chat(model, m, format_schema), messages, output, check
+        )
 
     def embed(self, model: str, texts: Sequence[str], *, batch: bool = False) -> list[list[float]]:
         """Embeddings. Per-case queries run on the CPU, leaving the GPU to the vision model;

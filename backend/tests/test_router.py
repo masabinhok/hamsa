@@ -235,3 +235,73 @@ def test_custom_thresholds_are_respected() -> None:
     )
     assert route(case).route is Route.HUMAN_REVIEW
     assert route(case, Thresholds(fast_track_confidence=0.7)).route is Route.FAST_TRACK
+
+
+# fallback verdicts
+
+
+def test_fallback_verdict_is_never_fast_tracked_on_evidence_alone() -> None:
+    decision = route(
+        outputs(
+            passages=TWO_SOURCES,
+            verdict=verdict("false", 0.98, citations=[cite("p1"), cite("p2")], fallback=True),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == [
+        "drafted by the local fallback model (openai/gpt-oss-120b); needs a human"
+    ]
+
+
+def test_fallback_verdict_is_never_fast_tracked_on_a_watermark() -> None:
+    decision = route(
+        outputs(claim=claim(watermarks=["Veo"]), verdict=verdict("false", 0.98, fallback=True))
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_recycled_media_still_fast_tracks_a_fallback_verdict() -> None:
+    decision = route(outputs(hits=[hit()], verdict=verdict("false", 0.5, fallback=True)))
+    assert decision.route is Route.FAST_TRACK
+
+
+# prior fact-checks
+
+
+FACT_CHECK = [passage("p1", "Nepal Factcheck", source_kind="fact_check")]
+
+
+@pytest.mark.parametrize(("label", "stance"), [("false", "refutes"), ("true", "supports")])
+def test_agreeing_prior_fact_check_fast_tracks(label: str, stance: str) -> None:
+    decision = route(
+        outputs(passages=FACT_CHECK, verdict=verdict(label, 0.9, citations=[cite("p1", stance)]))
+    )
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["prior fact-check agrees: Nepal Factcheck"]
+
+
+def test_one_news_source_alone_does_not_fast_track() -> None:
+    decision = route(
+        outputs(
+            passages=[passage("p1", "Onlinekhabar")],
+            verdict=verdict("false", 0.9, citations=[cite("p1")]),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_prior_fact_check_needs_confidence() -> None:
+    decision = route(
+        outputs(passages=FACT_CHECK, verdict=verdict("false", 0.78, citations=[cite("p1")]))
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_prior_fact_check_does_not_rescue_a_fallback_verdict() -> None:
+    decision = route(
+        outputs(
+            passages=FACT_CHECK,
+            verdict=verdict("false", 0.99, citations=[cite("p1")], fallback=True),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
