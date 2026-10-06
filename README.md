@@ -44,7 +44,7 @@ A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post,
             ▼                                         │
  ┌──────────────────────┐                             │
  │ Verdict reasoning    │◄────────────────────────────┘
- │ gpt-oss-120b (Groq)  │  fallback: local Qwen3-8B
+ │ gpt-oss-120b (Groq)  │  fallback: local Qwen3-VL-8B
  └──────────┬───────────┘
             ▼
  ┌──────────────────────┐   merge dup │ fast-track │ human desk │ investigate
@@ -54,14 +54,14 @@ A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post,
    Checker desk UI → one-click approve → published verdict
 ```
 
-Detailed design: [`docs/architecture.md`](docs/architecture.md)
+Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and their trade-offs: [`docs/adr/`](docs/adr/).
 
 ## Tech stack
 
 | Layer | Choice | Licence / type |
 |---|---|---|
 | Vision + extraction | Qwen3-VL-8B via Ollama (local) | Open-weight (Apache 2.0) |
-| Reasoning | gpt-oss-120b via Groq free tier; fallback Qwen3-8B local | Open-weight (Apache 2.0) |
+| Reasoning | gpt-oss-120b via Groq free tier; fallback Qwen3-VL-8B local | Open-weight (Apache 2.0) |
 | Text embeddings | bge-m3 | Open (MIT) |
 | Image embeddings | SigLIP | Open (Apache 2.0) |
 | Near-duplicate hashing | imagehash (pHash) | Open source |
@@ -84,7 +84,7 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md)
 
 ## Running locally
 
-*(Instructions coming in Week 2.)* Requirements: Python 3.11+, Docker, Ollama, an NVIDIA GPU with 8 GB+ VRAM (recommended), and a free Groq API key.
+*(Instructions coming in Week 2.)* Requirements: Python 3.12+, uv, Docker, Ollama, an NVIDIA GPU with 8 GB VRAM (recommended), and a free Groq API key (optional: without it, verdicts run on the local model).
 
 ## Evaluation
 
