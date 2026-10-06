@@ -11,3 +11,4 @@ data/qdrant/
 # third-party media (eval posts, archive footage, robustness photos), kept local
 data/eval/media/
 data/eval/robustness/
+data/corpus/
