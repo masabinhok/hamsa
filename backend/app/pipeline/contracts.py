@@ -151,6 +151,10 @@ class Verdict(Contract):
     rationale_ne: Annotated[NonEmptyStr, AfterValidator(_within_word_limit)]
     citations: list[Citation] = []
     model: NonEmptyStr
+    # True when the hosted model was unavailable and the local model judged instead.
+    # Measured weaker (it read "no evidence" as "false"), so the router never fast-tracks
+    # on its judgement alone.
+    fallback: bool = False
 
     def unknown_citations(self, evidence: Evidence) -> list[str]:
         """Cited ids absent from the evidence the model was given: hallucinations."""
