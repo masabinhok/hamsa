@@ -1,0 +1,273 @@
+.case {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 100dvh;
+}
+
+.body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  max-width: 52rem;
+  padding: var(--space-7) var(--space-6) var(--space-6);
+}
+
+.notice {
+  padding: var(--space-7) var(--space-6);
+  color: var(--silt);
+  max-width: 40rem;
+}
+
+/* The one bold element: the claim, in its own script. */
+.claimBlock {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.claim {
+  margin: 0;
+  max-width: 34ch;
+  font-family: var(--font-read);
+  font-weight: 600;
+  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 2.4rem);
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.claim:lang(ne) {
+  line-height: 1.6; /* Devanagari needs room above and below the headline */
+}
+
+.claimEn {
+  max-width: 60ch;
+  font-size: var(--step-1);
+  color: var(--ink-soft);
+}
+
+.caseMeta {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.heading {
+  font-size: var(--step-0);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.reasons {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.failure {
+  color: var(--false);
+}
+
+.quiet {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.verdictLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+
+.verdictLabel {
+  font-size: var(--step-2);
+  font-weight: 600;
+}
+
+.verdictLabel span {
+  margin-left: var(--space-2);
+  font-weight: 500;
+}
+
+.verdictLabel[data-label="false"] { color: var(--false); }
+.verdictLabel[data-label="misleading"] { color: var(--misleading); }
+.verdictLabel[data-label="true"] { color: var(--true); }
+.verdictLabel[data-label="unverifiable"] { color: var(--unverifiable); }
+
+.confidence {
+  color: var(--silt);
+  font-variant-numeric: tabular-nums;
+}
+
+.rationale {
+  max-width: 64ch;
+  font-family: var(--font-read);
+  line-height: 1.7;
+}
+
+.rationale:lang(ne) {
+  line-height: 1.85;
+}
+
+.mediaGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.mediaColumn {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.media {
+  display: block;
+  width: 100%;
+  max-height: 28rem;
+  object-fit: contain;
+  background: var(--milk-deep);
+  border-radius: 4px;
+}
+
+.mediaPlaceholder {
+  aspect-ratio: 16 / 9;
+  background: var(--milk-deep);
+  border-radius: 4px;
+}
+
+.match {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--ink);
+}
+
+.match[data-archive="verified_genuine"] {
+  border-left-color: var(--glacier);
+}
+
+.matchTitle {
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0 var(--space-4);
+}
+
+.fact dt {
+  color: var(--silt);
+}
+
+.fact dd {
+  grid-column: 2;
+  margin: 0;
+}
+
+.passages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-5);
+}
+
+.passage {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 64ch;
+}
+
+.passage[data-stance] {
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--ink);
+}
+
+.passage[data-stance="supports"] {
+  border-left-color: var(--glacier);
+}
+
+.passageSource {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.stance {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.passageTitle {
+  font-weight: 600;
+}
+
+.passageText {
+  font-family: var(--font-read);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.passageText:lang(ne),
+.passageTitle:lang(ne) {
+  line-height: 1.85;
+}
+
+.more summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  margin-bottom: var(--space-4);
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.history li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--space-3);
+}
+
+.history time {
+  color: var(--silt);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 52rem) {
+  .body {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .mediaGrid,
+  .fact {
+    grid-template-columns: 1fr;
+  }
+
+  .fact dd {
+    grid-column: 1;
+  }
+}
+
+.actor {
+  color: var(--silt);
+}

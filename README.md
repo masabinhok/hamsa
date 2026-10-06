@@ -100,7 +100,11 @@ uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
 
 uv run uvicorn --factory app.api.main:default_app         # API on :8000
 uv run python -m app.worker                               # in a second terminal
+
+cd ../frontend && npm install && npm run dev              # checker desk on :3000
 ```
+
+The desk asks for your name and the `DESK_TOKEN`. It talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` is set in `frontend/.env.local`.
 
 Submit with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer $DESK_TOKEN`. Interactive API docs: `localhost:8000/docs`.
 

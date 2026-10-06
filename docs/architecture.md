@@ -368,4 +368,4 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 | Eval set and scoring | `backend/app/eval/` |
 | Archive build (`uv run python -m app.archive`) | `backend/app/archive.py` |
 | Evidence corpus ingestion | `scripts/` |
-| Checker desk, submit form, feed | `frontend/` |
+| Checker desk (Next.js; queue, case workspace, decisions) | `frontend/src/` |
