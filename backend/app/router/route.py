@@ -15,6 +15,7 @@ from app.pipeline.contracts import (
     MediaMatch,
     Route,
     RouteDecision,
+    SourceKind,
     StageFailure,
     Stance,
     Verdict,
@@ -108,16 +109,23 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         if strong_prior:
             hit = strong_prior[0]
             return decide(Route.FAST_TRACK, [f"recycled media: matches {hit.original_context}"])
-        if ai_marks and verdict.confidence >= thresholds.fast_track_confidence:
+        if (
+            ai_marks
+            and not verdict.fallback
+            and verdict.confidence >= thresholds.fast_track_confidence
+        ):
             return decide(Route.FAST_TRACK, [f"visible ai-tool watermark: {', '.join(ai_marks)}"])
 
     agreeing = _agreeing_sources(verdict, evidence)
-    if (
+    confident = (
         not conflicts
+        and not verdict.fallback
         and label is not VerdictLabel.UNVERIFIABLE
         and verdict.confidence >= thresholds.fast_track_confidence
-        and len(agreeing) >= thresholds.min_independent_sources
-    ):
+    )
+    if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
+        return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+    if confident and len(agreeing) >= thresholds.min_independent_sources:
         return decide(
             Route.FAST_TRACK,
             [f"strong evidence: {len(agreeing)} independent sources ({', '.join(agreeing)})"],
@@ -169,6 +177,21 @@ def _agreeing_sources(verdict: Verdict, evidence: Evidence) -> list[str]:
     return sources
 
 
+def _agreeing_fact_checkers(verdict: Verdict, evidence: Evidence) -> list[str]:
+    expected = _expected_stance(verdict.label)
+    checkers: list[str] = []
+    for citation in verdict.citations:
+        passage = evidence.by_id(citation.passage_id)
+        if (
+            passage
+            and passage.source_kind is SourceKind.FACT_CHECK
+            and citation.stance is expected
+            and passage.source not in checkers
+        ):
+            checkers.append(passage.source)
+    return checkers
+
+
 def _conflicts(
     verdict: Verdict,
     evidence: Evidence,
@@ -195,6 +218,8 @@ def _conflicts(
 
 
 def _why_not_confident(verdict: Verdict, agreeing: list[str], t: Thresholds) -> str:
+    if verdict.fallback:
+        return f"drafted by the local fallback model ({verdict.model}); needs a human"
     if verdict.label is VerdictLabel.UNVERIFIABLE:
         return "ambiguous: evidence does not settle the claim"
     if verdict.confidence < t.fast_track_confidence:

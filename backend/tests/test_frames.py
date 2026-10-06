@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.ingest.frames import MAX_SHORT_SIDE, frames_from_image, keyframes_from_video
+from app.ingest.frames import MAX_SHORT_SIDE, frames_from_image, frames_of, keyframes_from_video
 from tests.images import photo, write_video
 
 
@@ -50,3 +50,8 @@ def test_undecodable_video_raises(tmp_path: Path) -> None:
     bogus.write_bytes(b"not a video")
     with pytest.raises(Exception):  # noqa: B017, PT011 - PyAV raises its own error types
         keyframes_from_video(bogus)
+
+
+def test_media_type_is_chosen_by_extension(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"unsupported media type \.gif"):
+        frames_of(tmp_path / "clip.gif")
