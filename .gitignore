@@ -7,3 +7,6 @@ node_modules/
 data/archive/
 data/qdrant/
 *.log
+
+# eval media: copyrighted third-party content, kept local
+data/eval/media/
