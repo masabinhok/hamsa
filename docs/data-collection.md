@@ -51,7 +51,7 @@ For **true** items, collect genuine flood footage that a credible outlet publish
 | `evidence_urls` | one of two | Several URLs separated by `|` |
 | `notes` | no | Anything a reviewer should know, e.g. visible watermark, uploader is an AI-content page |
 
-`false` versus `misleading`: **false** means the core claim is wrong (the video is not from Nepal). **Misleading** means real elements are framed to mislead (real Nepal footage, wrong date or wrong death toll).
+`false` versus `misleading`: **use the fact-checker's own published rating.** Fact-checkers differ: Nepal Factcheck rates foreign footage passed off as Nepal as भ्रामक (misleading), while AFP usually rates the same pattern false. Hamsa is measured on agreement with published fact-checks, so the label follows the publisher. The scorer reports exact-label agreement and, separately, whether Hamsa refuted the post at all (false or misleading versus true or unverifiable), which is what matters for triage. For items with no fact-check (true posts, your own finds): **false** means the core claim is wrong; **misleading** means real elements framed to mislead.
 
 ## Rules
 
