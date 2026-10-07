@@ -14,3 +14,4 @@ data/eval/robustness/
 data/corpus/
 data/hamsa.db*
 data/cases/
+data/eval/drafts*
