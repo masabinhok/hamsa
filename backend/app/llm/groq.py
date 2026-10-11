@@ -87,7 +87,10 @@ class GroqClient:
                 self._sleep(wait)
                 continue
 
-            response.raise_for_status()
+            if response.is_error:
+                # e.g. 400 json_validate_failed when the model breaks the schema; the
+                # local model can still answer, and Groq's reason must reach the record.
+                raise ReasonerUnavailable(f"http {response.status_code}: {response.text[:300]}")
             payload: dict[str, Any] = response.json()
             return payload["choices"][0]["message"]["content"]
         raise ReasonerUnavailable("unreachable")  # loop always returns or raises
