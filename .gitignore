@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+node_modules/
+.next/
+data/archive/media/
+data/qdrant/
+*.log
+
+# third-party media (eval posts, archive footage, robustness photos), kept local
+data/eval/media/
+data/eval/robustness/
+data/corpus/
+data/hamsa.db*
+data/cases/
+data/eval/drafts*
+data/eval/runs/
+graphify-out/
