@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date
 
 import pytest
 
@@ -97,6 +98,39 @@ def test_verified_genuine_match_is_not_recycled_evidence() -> None:
     genuine = hit(archive_label="verified_genuine", original_context="NDRRMA footage, 2026-08-27")
     decision = route(outputs(hits=[genuine], verdict=verdict("false", confidence=0.3)))
     assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_genuine_footage_from_an_earlier_event_is_recycled() -> None:
+    genuine = hit(archive_label="verified_genuine", original_date=date(2026, 8, 27))
+    decision = route(
+        outputs(hits=[genuine], verdict=verdict("false", 0.3), seen_on=date(2027, 7, 2))
+    )
+    assert decision.route is Route.FAST_TRACK
+
+
+@pytest.mark.parametrize(
+    ("seen_on", "claimed_date", "recycled"),
+    [
+        (date(2026, 9, 26), None, False),  # 30 days on: still the same event
+        (date(2026, 9, 27), None, True),
+        (None, None, False),
+        # The post names the event's own date, so its footage is not recycled.
+        (date(2027, 7, 2), date(2026, 8, 27), False),
+    ],
+)
+def test_genuine_footage_age_boundaries(
+    seen_on: date | None, claimed_date: date | None, recycled: bool
+) -> None:
+    genuine = hit(archive_label="verified_genuine", original_date=date(2026, 8, 27))
+    decision = route(
+        outputs(
+            claim=claim(claimed_date=claimed_date),
+            hits=[genuine],
+            verdict=verdict("misleading", 0.3),
+            seen_on=seen_on,
+        )
+    )
+    assert (decision.route is Route.FAST_TRACK) is recycled
 
 
 def test_recycled_media_with_true_verdict_is_a_conflict() -> None:
