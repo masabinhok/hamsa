@@ -80,3 +80,11 @@ def test_network_failure_is_unavailable_not_a_crash() -> None:
     fake = FakeGroq(*[httpx.ConnectError("down") for _ in range(MAX_ATTEMPTS)])
     with pytest.raises(ReasonerUnavailable, match="network"):
         run(fake)
+
+
+def test_client_errors_fall_back_at_once_with_groq_reason() -> None:
+    error = {"error": {"code": "json_validate_failed", "message": "Failed to generate JSON"}}
+    fake = FakeGroq(httpx.Response(400, json=error))
+    with pytest.raises(ReasonerUnavailable, match=r"400.*json_validate_failed"):
+        run(fake)
+    assert len(fake.bodies) == 1
