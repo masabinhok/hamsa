@@ -77,8 +77,9 @@ def test_strong_prior_match_with_false_verdict_is_fast_tracked() -> None:
 @pytest.mark.parametrize(
     ("phash_distance", "cosine", "strong"),
     [
-        (16, None, True),
-        (17, None, False),
+        (10, None, True),
+        # Measured on real video: unrelated news clips matched at 12 and 16.
+        (12, None, False),
         (None, 0.97, True),
         (None, 0.9699, False),
         (30, 0.98, True),

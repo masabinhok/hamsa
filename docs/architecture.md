@@ -114,18 +114,18 @@ Implemented in `backend/app/pipeline/media_match.py` ([ADR 0003](adr/0003-two-ti
 
 Candidates from both searches get both scores. Each archive item keeps its best hit across all submitted frames.
 
-**A hit is strong if pHash distance ≤ 16 or cosine ≥ 0.97.** These are *starting values* from a robustness check on Creative Commons flood photos (`uv run python -m app.eval.media_robustness`, run 2026-10-06):
+**A hit is strong if pHash distance ≤ 10 or cosine ≥ 0.97.** The limits started at 16 and 0.97 from a robustness check on Creative Commons flood photos (`uv run python -m app.eval.media_robustness`, run 2026-10-06, table below with the current result):
 
 | Case | pHash distance | Cosine | Strong? |
 |---|---|---|---|
 | Re-encoded, resized, cropped to 90%, mirrored, black letterbox | 0–8 | 0.97–1.00 | yes |
 | Cropped to 70% | 18–22 | 0.97–0.98 | yes, by cosine |
-| Caption banner, mirrored plus caption | 0–14 | 0.91–0.96 | yes, by pHash |
-| Phone screenshot with status bar | 12–18 | 0.91–0.94 | 1 of 2 |
+| Caption banner, mirrored plus caption | 0–14 | 0.91–0.96 | 2 of 4 (the two at 14 miss) |
+| Phone screenshot with status bar | 12–18 | 0.91–0.94 | no |
 | **Letterbox with blurred background (TikTok style)** | 26–30 | 0.91–0.95 | **no** |
 | *Different photo, same river* | 28–32 | up to **0.947** | no (correct) |
 
-The table shows why SigLIP cannot decide on its own. A different photo of the same river scores *higher* cosine than some genuine reposts, so cosine alone means "same kind of scene", not "same footage". At these thresholds the check matched 17 of 20 edited reposts with 0 false matches out of 5. **Blurred-background letterboxes are a known gap,** and a common one: the first real viral post tested (Rasuwa, above) uses exactly this format. A gradient-based trim was tried, and it also cut off caption banners. Fixing this is the top media-match priority once the eval set has real examples.
+The table shows why SigLIP cannot decide on its own. A different photo of the same river scores *higher* cosine than some genuine reposts, so cosine alone means "same kind of scene", not "same footage". At pHash ≤ 16 the check matched 17 of 20 edited reposts with 0 false matches out of 5. **The first eval run on real video (2026-10-11) moved the limit to 10:** unrelated news clips matched eval posts from pHash 12 upward, mostly on end cards and logo frames, while the true matches scored 4 and 10. At 10 the photo check matches 14 of 20 edits, still with 0 false matches; a missed repost goes to a human, a false one would be fast-tracked. **Blurred-background letterboxes are a known gap,** and a common one: the first real viral post tested (Rasuwa, above) uses exactly this format. A gradient-based trim was tried, and it also cut off caption banners. Fixing this is the top media-match priority once the eval set has real examples.
 
 Each archive item carries a label:
 - **`prior`:** footage from before the incident, or from elsewhere.
@@ -226,7 +226,7 @@ flowchart TD
 ```
 
 **Definitions**
-- **Strong hit:** pHash distance of 16 or less, or SigLIP cosine of 0.97 or more (section 3.3). Recycled evidence is a strong hit on `prior` footage, or on `verified_genuine` footage dated more than 30 days (`same_event_days`) before the post. The post's date is the date it claims, else the date it was posted or submitted. A recent `verified_genuine` hit does not count, because genuine footage can still carry a false caption, and a post that names its event's own date ("the 2026 Rasuwa flood") is not recycled.
+- **Strong hit:** pHash distance of 10 or less, or SigLIP cosine of 0.97 or more (section 3.3). Recycled evidence is a strong hit on `prior` footage, or on `verified_genuine` footage dated more than 30 days (`same_event_days`) before the post. The post's date is the date it claims, else the date it was posted or submitted. A recent `verified_genuine` hit does not count, because genuine footage can still carry a false caption, and a post that names its event's own date ("the 2026 Rasuwa flood") is not recycled.
 - **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
 - **Independent agreeing sources:** distinct publishers among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same publisher count once, and so do two editions of one outlet: Onlinekhabar's Nepali and English sites were first counted as two sources, which would have let the fallback model's wrong verdict fast-track.
 - **Prior fact-check:** a cited passage from a fact-checker whose stance matches the verdict. Catching already-debunked claims as they resurface is Hamsa's core job, so one agreeing fact-check is enough, with confidence and no conflict.
