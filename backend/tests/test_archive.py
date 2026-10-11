@@ -1,5 +1,9 @@
 import csv
+import json
+import subprocess
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -98,3 +102,81 @@ def test_manifest_rows_are_validated(dirs: tuple[Path, Path]) -> None:
     write(archive_dir / "manifest.csv", MANIFEST_HEADER, [GENUINE | {"label": "maybe"}])
     with pytest.raises(ValidationError):
         archive.collect_entries()
+
+
+def fake_ytdlp(info: dict[str, Any]) -> Any:
+    def run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        folder = Path(command[command.index("-o") + 1]).parent
+        (folder / "clip.mp4").write_bytes(b"video")
+        (folder / "clip.info.json").write_text(json.dumps(info))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    return run
+
+
+YOUTUBE_INFO = {
+    "extractor_key": "Youtube",
+    "id": "E8-pRam3KPo",
+    "title": "Massive landslide plunges into Nepal's Kali Gandaki River",
+    "upload_date": "20260928",
+    "webpage_url": "https://www.youtube.com/watch?v=E8-pRam3KPo",
+}
+
+
+def test_add_downloads_the_clip_and_appends_a_manifest_row(
+    dirs: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_dir, _ = dirs
+    monkeypatch.setattr(archive.subprocess, "run", fake_ytdlp(YOUTUBE_INFO))
+
+    row = archive.add(
+        "https://youtu.be/E8-pRam3KPo", ArchiveLabel.VERIFIED_GENUINE, "Lete landslide, Mustang"
+    )
+
+    assert row.archive_id == "youtube-e8-pram3kpo"
+    assert row.original_date == date(2026, 9, 28)
+    assert (archive_dir / "media" / "youtube-e8-pram3kpo.mp4").read_bytes() == b"video"
+    [(entry, path)] = archive.collect_entries()
+    assert entry.original_context.startswith("Lete landslide, Mustang: Massive landslide")
+    assert path.name == "youtube-e8-pram3kpo.mp4"
+
+
+def test_add_refuses_eval_posts_even_behind_a_short_link(
+    dirs: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, eval_dir = dirs
+    post = RECYCLED | {"post_url": "https://www.youtube.com/watch?v=E8-pRam3KPo"}
+    write(eval_dir / "items.csv", list(EvalItem.model_fields), [post])
+    monkeypatch.setattr(archive.subprocess, "run", fake_ytdlp(YOUTUBE_INFO))
+
+    with pytest.raises(ValueError, match="is an eval post"):
+        archive.add("https://youtu.be/E8-pRam3KPo", ArchiveLabel.VERIFIED_GENUINE, "Lete")
+
+
+def test_add_refuses_draft_eval_posts(
+    dirs: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, eval_dir = dirs
+    draft = RECYCLED | {"post_url": "https://www.youtube.com/watch?v=E8-pRam3KPo"}
+    write(eval_dir / "drafts.csv", list(EvalItem.model_fields), [draft])
+    monkeypatch.setattr(archive.subprocess, "run", fake_ytdlp(YOUTUBE_INFO))
+
+    with pytest.raises(ValueError, match="is an eval post"):
+        archive.add(YOUTUBE_INFO["webpage_url"], ArchiveLabel.VERIFIED_GENUINE, "Lete")
+
+
+def test_add_refuses_a_clip_already_archived(
+    dirs: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(archive.subprocess, "run", fake_ytdlp(YOUTUBE_INFO))
+    archive.add(YOUTUBE_INFO["webpage_url"], ArchiveLabel.VERIFIED_GENUINE, "Lete")
+    with pytest.raises(ValueError, match="already in the archive"):
+        archive.add(YOUTUBE_INFO["webpage_url"], ArchiveLabel.VERIFIED_GENUINE, "Lete")
+
+
+def test_eval_overlaps_reports_only_strong_matches() -> None:
+    same = [1.0] * 64
+    near = [-1.0] * 10 + [1.0] * 54  # 10 bits differ
+    far = [-1.0] * 30 + [1.0] * 34
+    found = archive.eval_overlaps({"clip": [same]}, {"h001": [near], "h002": [far]})
+    assert found == ["clip matches eval post h001 (pHash 10)"]
