@@ -1,0 +1,100 @@
+/* Hamsa desk tokens. Palette "glacial milk": the Bhotekoshi's silt-laden water. */
+:root {
+  --milk: #f6f8f7;
+  --milk-deep: #eaf0ee;
+  --ink: #16323b;
+  --ink-soft: #3d5862;
+  --silt: #6e8288;
+  --rule: #cfdbd9;
+  --glacier: #a9cfd3;
+  --glacier-wash: #e2f0f1;
+
+  /* Verdict colours carry meaning and are used for nothing else. */
+  --false: #a3283b;
+  --misleading: #a86a12;
+  --true: #2d7656;
+  --unverifiable: #5d6970;
+
+  --font-ui: var(--font-mukta), system-ui, sans-serif;
+  --font-read: var(--font-martel), Georgia, serif;
+
+  /* Type scale: 1.25 ratio from 16px. */
+  --step--1: 0.8rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.5625rem;
+  --step-3: 1.953rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--milk);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 0.18em;
+  text-decoration-color: var(--silt);
+}
+
+a:hover {
+  text-decoration-color: var(--ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--glacier);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,74 @@
+[project]
+name = "hamsa"
+version = "0.1.0"
+description = "Fact-check triage desk for Nepali disaster misinformation, on open-weight AI."
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "av>=19.0.1",
+    "fastapi>=0.142.2",
+    "httpx>=0.28.1",
+    "imagehash>=4.3.2",
+    "numpy>=2.5.3",
+    "pillow>=12.3.0",
+    "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "qdrant-client>=1.19.1",
+    "sqlalchemy>=2.1.3",
+    "torch>=2.14.1",
+    "transformers>=5.18.0",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "httpx2>=2.13.1",
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",  # pycodestyle, pyflakes
+    "I",            # import order
+    "B",            # bugbear
+    "UP",           # pyupgrade
+    "SIM",          # simplify
+    "RUF",          # ruff-specific
+    "PT",           # pytest style
+    "ASYNC",        # async pitfalls
+    "S",            # bandit security checks
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is how pytest works
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+include = ["app", "tests"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+xfail_strict = true
+# Tests use in-memory Qdrant, which ignores payload indexes; the server uses them.
+filterwarnings = ["ignore:Payload indexes have no effect in the local Qdrant"]
+
+# CPU-only torch: SigLIP runs on the CPU (ADR 0007), and CUDA wheels add ~2 GB.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
