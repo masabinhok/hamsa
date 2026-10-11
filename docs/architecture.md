@@ -131,7 +131,7 @@ Each archive item carries a label:
 - **`prior`:** footage from before the incident, or from elsewhere.
 - **`verified_genuine`:** confirmed footage of this incident.
 
-A hit on `prior` footage is evidence that the post is recycled. A hit on `verified_genuine` footage supports the post being authentic.
+A hit on `prior` footage is evidence that the post is recycled. A hit on `verified_genuine` footage supports the post being authentic, until that footage is old: genuine clips of one disaster are the most likely to be reposted as the next one (section 3.7).
 
 ### 3.4 Duplicate check
 
@@ -226,7 +226,7 @@ flowchart TD
 ```
 
 **Definitions**
-- **Strong hit:** pHash distance of 16 or less, or SigLIP cosine of 0.97 or more (section 3.3). Only `prior` archive hits count as recycled evidence. A `verified_genuine` hit does not, because genuine footage can still carry a false caption.
+- **Strong hit:** pHash distance of 16 or less, or SigLIP cosine of 0.97 or more (section 3.3). Recycled evidence is a strong hit on `prior` footage, or on `verified_genuine` footage dated more than 30 days (`same_event_days`) before the post. The post's date is the date it claims, else the date it was posted or submitted. A recent `verified_genuine` hit does not count, because genuine footage can still carry a false caption, and a post that names its event's own date ("the 2026 Rasuwa flood") is not recycled.
 - **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
 - **Independent agreeing sources:** distinct publishers among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same publisher count once, and so do two editions of one outlet: Onlinekhabar's Nepali and English sites were first counted as two sources, which would have let the fallback model's wrong verdict fast-track.
 - **Prior fact-check:** a cited passage from a fact-checker whose stance matches the verdict. Catching already-debunked claims as they resurface is Hamsa's core job, so one agreeing fact-check is enough, with confidence and no conflict.
