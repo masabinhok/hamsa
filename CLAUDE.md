@@ -17,7 +17,7 @@ Hamsa is a fact-check triage desk for Nepali disaster misinformation, built solo
 
 ## Layout
 - `backend/`: uv project, package `app` (FastAPI). Run tools from `backend/`: `uv run ruff check`, `uv run ruff format`, `uv run pyright`, `uv run pytest`.
-- `frontend/`: Next.js checker desk (not started).
+- `frontend/`: Next.js checker desk. Run from `frontend/`: `npm run dev`, `npx tsc --noEmit`, `npm run lint`.
 - `docs/architecture.md`: system, schemas, router rules, failure modes, flows (Mermaid).
 - `docs/adr/NNNN-title.md`: one decision per file (context, options, decision, consequences). Only for decisions with a real rejected alternative.
 
