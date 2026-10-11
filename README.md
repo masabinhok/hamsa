@@ -110,7 +110,16 @@ Submit with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the 
 
 ## Evaluation
 
-A labelled set of known debunked items and genuine items from the August 2026 floods (`data/eval/`). We report recycled-media detection precision/recall and verdict agreement with published fact-checks.
+A labelled set of debunked and genuine posts from Nepal's 2026 disasters (`data/eval/`), labelled with each fact-checker's published rating. We report recycled-media precision and recall, verdict agreement (exact, and refuted-or-not), fast-track precision, the share sent to a human, and latency. A second run hides every fact-check from retrieval, to measure posts nobody has debunked yet.
+
+```bash
+cd backend
+uv run python -m app.eval.score                    # tuning split, h001-h040
+uv run python -m app.eval.score --no-fact-checks   # as if no fact-check existed
+uv run python -m app.eval.score --split test       # held-out numbers for this README
+```
+
+Stage outputs are cached in `data/eval/runs/`, so rescoring after a threshold change reruns only the router.
 
 ## Limitations and future work
 
