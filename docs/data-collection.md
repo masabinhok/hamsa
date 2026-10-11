@@ -72,7 +72,7 @@ Media matching compares submitted posts against an archive of footage with a kno
 |---|---|
 | `archive_id` | lowercase with dashes, e.g. `kullu-flood-2023-bridge` |
 | `media_file` | file name in `data/archive/media/` |
-| `label` | `prior` (older or elsewhere) or `verified_genuine` (confirmed footage of this incident) |
+| `label` | `prior` (older or elsewhere) or `verified_genuine` (confirmed footage of a real event; fill `original_date`, because a repost more than 30 days later counts as recycled) |
 | `original_context` | what it really shows, e.g. `2023 Himachal Pradesh floods, Kullu` |
 | `original_date` | `YYYY-MM-DD` if known |
 | `source_url` | where it was first published |
