@@ -48,9 +48,11 @@ class Thresholds:
     Media values come from a robustness check on Creative Commons flood photos
     (docs/architecture.md 3.3): edited reposts scored pHash <= 15 or cosine >= 0.974,
     different photos of the same river scored pHash >= 26 and cosine up to 0.946.
+    On real video (eval run 2026-10-11) unrelated clips matched from pHash 12, mostly on
+    end cards and logo frames, while true matches scored 4 and 10; hence 10.
     """
 
-    phash_max_distance: int = 16
+    phash_max_distance: int = 10
     cosine_min: float = 0.97
     fast_track_confidence: float = 0.85
     min_independent_sources: int = 2
