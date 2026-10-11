@@ -21,13 +21,17 @@ what is visibly present in the frames; never infer or add knowledge.
 
 Fields:
 - claim: the central factual assertion, in the post's original language and script. \
-If the post is Nepali, write Nepali in Devanagari. If there is no post text, describe \
-what the media is presented as showing, in English.
-- claim_en: the same claim in English.
+If the post is Nepali, write Nepali in Devanagari. If there is no post text, or only \
+an exclamation, prayer, or emoji, describe what the media is presented as showing, in \
+English (e.g. "This video shows a flood sweeping through a market in Nepal").
+- claim_en: the same claim in English. Keep Nepali calendar (Bikram Sambat) dates as \
+they are, e.g. "Bhadra 12 (Nepali calendar)": भदौ is not August and २०८३ is not a \
+Gregorian year.
 - places: every place named anywhere: in the post text (the place the claim is \
 about, e.g. "रसुवा") and in on-screen text (e.g. "Columbia Glacier"). Full names in \
 the original script; "मेलम्ची बजार" is one place, not two.
-- claimed_date: only if the post states a date (YYYY-MM-DD); otherwise null.
+- claimed_date: only if the post states a Gregorian date (YYYY-MM-DD); null for \
+Nepali calendar dates and when no date is stated.
 - numbers: every number the claim depends on (deaths, missing, rainfall, money); \
 unit and refers_to in English, e.g. value 50, unit "people", refers_to "missing".
 - visible_text: on-screen text in the frames (captions, banners, signs), verbatim.
@@ -35,7 +39,8 @@ unit and refers_to in English, e.g. value 50, unit "people", refers_to "missing"
 a TV channel logo or "Veo", "Sora", or "Gemini". Empty if none.
 - handles: usernames or page names visible in the text or frames, such as @name.
 - checkable: false only if the post makes no factual assertion (prayers, opinions, \
-condolences); true otherwise.
+condolences) and shows no disaster footage. Disaster footage shared with only an \
+exclamation or prayer is checkable: it is presented as a real event.
 """
 
 
