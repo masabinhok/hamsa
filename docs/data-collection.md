@@ -77,6 +77,16 @@ Media matching compares submitted posts against an archive of footage with a kno
 | `original_date` | `YYYY-MM-DD` if known |
 | `source_url` | where it was first published |
 
+The quickest way is the collector, which downloads the clip, reads its title and upload date, and appends the row (it refuses eval posts and clips already archived):
+
+```bash
+cd backend
+uv run python -m app.archive add "<url>" --label verified_genuine --context "Budhi Gandaki flash flood, Gorkha, 11 Oct 2026"
+# add --date YYYY-MM-DD when the footage is older than the upload; --browser firefox for posts behind a login
+```
+
+When the build finds an archive clip that matches an eval post, it prints a `check:` line. Genuine footage archived before its reposts is realistic, but decide per pair whether it makes the eval too easy.
+
 Worth adding: **verified genuine flood footage** from news outlets and official pages (so real posts can be confirmed, not just fakes debunked), and **well-known older disaster clips** that tend to resurface (Kullu 2023, Melamchi 2021, Kerala 2018, the Columbia Glacier videos).
 
 Then rebuild: `cd backend && uv run python -m app.archive` (Qdrant must be running: `docker compose up -d`).
