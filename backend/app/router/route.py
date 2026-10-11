@@ -5,6 +5,7 @@ reasons that fired it, so a checker can see why a case landed where it did.
 """
 
 from dataclasses import dataclass
+from datetime import date
 
 from app.pipeline.contracts import (
     ArchiveHit,
@@ -53,6 +54,8 @@ class Thresholds:
     cosine_min: float = 0.97
     fast_track_confidence: float = 0.85
     min_independent_sources: int = 2
+    # Footage of one disaster keeps being reposted, correctly, for weeks after it.
+    same_event_days: int = 30
 
 
 DEFAULT_THRESHOLDS = Thresholds()
@@ -68,6 +71,8 @@ class StageOutputs:
     media_match: MediaMatch | None = None
     evidence: Evidence | None = None
     verdict: Verdict | None = None
+    # When the post was made or submitted; dates archive footage that has no prior label.
+    seen_on: date | None = None
 
 
 def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) -> RouteDecision:
@@ -97,7 +102,9 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         raise ValueError(f"verdict cites passages it was not given: {unknown}")
 
     strong = [hit for hit in media.hits if is_strong_match(hit, thresholds)]
-    strong_prior = [h for h in strong if h.archive_label is ArchiveLabel.PRIOR]
+    # A date the post itself claims wins: "the 2024 flood" with 2024 footage is not recycled.
+    reference = claim.claimed_date or outputs.seen_on
+    strong_prior = [h for h in strong if _is_older_footage(h, reference, thresholds)]
     ai_marks = _ai_tool_marks(claim)
     conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks)
     label = verdict.label
@@ -148,6 +155,15 @@ def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool
     by_hash = hit.phash_distance is not None and hit.phash_distance <= t.phash_max_distance
     by_embedding = hit.cosine is not None and hit.cosine >= t.cosine_min
     return by_hash or by_embedding
+
+
+def _is_older_footage(hit: ArchiveHit, reference: date | None, t: Thresholds) -> bool:
+    """Prior footage, or genuine footage of an earlier event resurfacing under a new claim."""
+    if hit.archive_label is ArchiveLabel.PRIOR:
+        return True
+    if hit.original_date is None or reference is None:
+        return False
+    return (reference - hit.original_date).days > t.same_event_days
 
 
 def _ai_tool_marks(claim: Claim) -> list[str]:

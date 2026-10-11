@@ -56,7 +56,10 @@ def is_transient(error: Exception) -> bool:
     return isinstance(error, httpx.TransportError | ResponseHandlingException | ConnectionError)
 
 
-def run(pipeline: Pipeline, text: str | None, media: Sequence[Path]) -> Result:
+def run(
+    pipeline: Pipeline, text: str | None, media: Sequence[Path], seen_on: date | None = None
+) -> Result:
+    """`seen_on` is the post's date when known (eval items); otherwise today, the submission."""
     seconds: dict[str, float] = {}
     failures: list[StageFailure] = []
 
@@ -88,6 +91,7 @@ def run(pipeline: Pipeline, text: str | None, media: Sequence[Path]) -> Result:
             media_match=media_match,
             evidence=evidence,
             verdict=verdict,
+            seen_on=seen_on or date.today(),
         )
         return Result(outputs=outputs, decision=route(outputs), seconds=seconds)
 
