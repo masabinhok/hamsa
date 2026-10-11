@@ -101,10 +101,7 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         # The verdict stage rejects these; reaching here means a pipeline bug.
         raise ValueError(f"verdict cites passages it was not given: {unknown}")
 
-    strong = [hit for hit in media.hits if is_strong_match(hit, thresholds)]
-    # A date the post itself claims wins: "the 2024 flood" with 2024 footage is not recycled.
-    reference = claim.claimed_date or outputs.seen_on
-    strong_prior = [h for h in strong if _is_older_footage(h, reference, thresholds)]
+    strong_prior = recycled_hits(outputs, thresholds)
     ai_marks = _ai_tool_marks(claim)
     conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks)
     label = verdict.label
@@ -149,6 +146,20 @@ def _require[T](value: T | None, name: str) -> T:
     if value is None:
         raise ValueError(f"{name} is missing but no stage failure was recorded")
     return value
+
+
+def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> list[ArchiveHit]:
+    """Strong archive matches showing the media predates the post (architecture 3.7)."""
+    if outputs.media_match is None:
+        return []
+    # A date the post itself claims wins: "the 2024 flood" with 2024 footage is not recycled.
+    claimed = outputs.claim.claimed_date if outputs.claim else None
+    reference = claimed or outputs.seen_on
+    return [
+        hit
+        for hit in outputs.media_match.hits
+        if is_strong_match(hit, t) and _is_older_footage(hit, reference, t)
+    ]
 
 
 def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool:
