@@ -15,4 +15,5 @@ data/corpus/
 data/hamsa.db*
 data/cases/
 data/eval/drafts*
+data/eval/runs/
 graphify-out/
