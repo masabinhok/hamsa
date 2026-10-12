@@ -2,7 +2,10 @@ from datetime import date
 from typing import Any
 
 from app.eval.dataset import EvalItem
-from app.eval.score import Scored, in_split, summarize
+from app.eval.score import Scored, in_split, summarize, with_retries
+from app.pipeline.contracts import Stage, StageFailure
+from app.pipeline.run import Result
+from app.router.route import StageOutputs, route
 from tests.factories import cite, claim, hit, outputs, passage, verdict
 
 
@@ -75,3 +78,25 @@ def test_summary_counts_each_metric() -> None:
         "latency: p50 25.0 s, p95 38.5 s",
     ]
     assert "| h003 | true | false | fast_track | **no** |" in lines
+
+
+def result(*failures: StageFailure) -> Result:
+    done = StageOutputs(failures=failures) if failures else outputs()
+    return Result(outputs=done, decision=route(done))
+
+
+def test_transient_failures_are_retried_with_the_worker_backoff() -> None:
+    dropped = StageFailure(stage=Stage.EXTRACT, error="RemoteProtocolError", transient=True)
+    attempts = [result(dropped), result(dropped), result()]
+    waits: list[float] = []
+    final = with_retries(lambda: attempts.pop(0), sleep=waits.append)
+    assert final.outputs.failures == ()
+    assert waits == [30.0, 120.0]
+
+
+def test_a_real_failure_is_not_retried() -> None:
+    broken = StageFailure(stage=Stage.VERDICT, error="invalid after retry", transient=False)
+    waits: list[float] = []
+    final = with_retries(lambda: result(broken), sleep=waits.append)
+    assert final.outputs.failures == (broken,)
+    assert waits == []
