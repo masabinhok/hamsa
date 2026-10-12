@@ -6,10 +6,11 @@ import pytest
 from app.pipeline.contracts import Route, Stage, StageFailure
 from app.pipeline.run import Result
 from app.router.route import StageOutputs
-from app.store.cases import Database
-from app.store.models import Case, CaseStatus, Job, JobState
+from app.store.cases import Database, StoredMedia, create_case, open_claims
+from app.store.models import Case, CaseStatus, Channel, Job, JobState
 from app.worker import MAX_ATTEMPTS, process_next
-from tests.stored import add_case, database, routed_result
+from tests.factories import claim, outputs
+from tests.stored import add_case, add_routed_case, database, routed_result
 
 
 @pytest.fixture
@@ -74,3 +75,36 @@ def test_pipeline_bug_routes_to_a_human_instead_of_looping(db: Database, tmp_pat
         assert case.route == Route.HUMAN_REVIEW.value
         assert case.decision is not None
         assert case.decision["reasons"] == ["pipeline error: ValueError"]
+
+
+def add_with_file(db: Database, case_id: str, sha256: str) -> None:
+    with db.session.begin() as session:
+        create_case(session, case_id, Channel.WEB, None, None, [StoredMedia("a.mp4", sha256, 10)])
+
+
+def test_identical_file_is_merged_without_running_the_pipeline(
+    db: Database, tmp_path: Path
+) -> None:
+    add_with_file(db, "c1", "f" * 64)
+    add_with_file(db, "c2", "f" * 64)
+    runs: list[str | None] = []
+
+    def runner(text: str | None, media: Sequence[Path]) -> Result:
+        runs.append(text)
+        return routed_result()
+
+    assert process_next(db, runner, tmp_path) == "c1"
+    assert process_next(db, runner, tmp_path) == "c2"
+    assert len(runs) == 1
+    with db.session() as session:
+        merged = session.get_one(Case, "c2")
+        assert merged.status is CaseStatus.MERGED
+        assert merged.merged_into == "c1"
+
+
+def test_open_claims_are_the_routed_checkable_ones(db: Database) -> None:
+    add_routed_case(db, "c1", routed_result(outputs(claim=claim(places=["Melamchi"]))))
+    add_routed_case(db, "c2", routed_result(outputs(claim=claim(checkable=False))))
+    with db.session() as session:
+        waiting = open_claims(session)
+    assert [(c.case_id, c.places) for c in waiting] == [("c1", ("Melamchi",))]

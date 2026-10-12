@@ -83,8 +83,25 @@ def test_network_failure_is_unavailable_not_a_crash() -> None:
 
 
 def test_client_errors_fall_back_at_once_with_groq_reason() -> None:
-    error = {"error": {"code": "json_validate_failed", "message": "Failed to generate JSON"}}
+    error = {"error": {"code": "model_not_found", "message": "The model does not exist"}}
     fake = FakeGroq(httpx.Response(400, json=error))
-    with pytest.raises(ReasonerUnavailable, match=r"400.*json_validate_failed"):
+    with pytest.raises(ReasonerUnavailable, match=r"400.*model_not_found"):
         run(fake)
     assert len(fake.bodies) == 1
+
+
+def test_repeated_failed_generations_fall_back_with_groq_reason() -> None:
+    error = {"error": {"code": "json_validate_failed", "message": "Failed to generate JSON"}}
+    fake = FakeGroq(*[httpx.Response(400, json=error) for _ in range(MAX_ATTEMPTS)])
+    with pytest.raises(ReasonerUnavailable, match=r"400.*json_validate_failed"):
+        run(fake)
+    assert len(fake.bodies) == MAX_ATTEMPTS
+
+
+def test_a_failed_generation_is_sampled_again() -> None:
+    error = {"error": {"code": "output_parse_failed", "message": "Parsing failed"}}
+    fake = FakeGroq(httpx.Response(400, json=error), ok())
+    draft, waits = run(fake)
+    assert draft.label == "false"
+    assert len(fake.bodies) == 2
+    assert waits == []
