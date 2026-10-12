@@ -40,6 +40,7 @@ class Pipeline:
     embed_text: EmbedText
     reasoners: Sequence[tuple[Reasoner, str]]
     incident_start: date
+    nepali_checker: tuple[Reasoner, str] | None = None
 
 
 @dataclass
@@ -115,6 +116,13 @@ def run(
 
     verdict: Verdict | None = stage(
         Stage.VERDICT,
-        lambda: judge(claim, matched, evidence, pipeline.reasoners, has_media=bool(frames)),
+        lambda: judge(
+            claim,
+            matched,
+            evidence,
+            pipeline.reasoners,
+            has_media=bool(frames),
+            checker=pipeline.nepali_checker,
+        ),
     )
     return finish(claim=claim, media_match=matched, evidence=evidence, verdict=verdict)

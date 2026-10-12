@@ -348,3 +348,10 @@ def test_prior_fact_check_does_not_rescue_a_fallback_verdict() -> None:
         )
     )
     assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_nepali_issue_stops_a_recycled_fast_track() -> None:
+    flipped = verdict("false", 0.95, nepali_issue="verdict direction")
+    decision = route(outputs(hits=[hit()], verdict=flipped))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["Nepali rationale needs a checker: verdict direction"]

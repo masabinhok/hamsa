@@ -186,6 +186,7 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built by `uv ru
 | `citations` | list of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
 | `model` | str | which model produced it (Groq or fallback) |
 | `fallback` | bool | true when the local model judged because Groq was unavailable |
+| `nepali_issue` | str or null | why the Nepali rationale may not say what the English says, or that it could not be checked; null when gpt-oss-20b found it faithful |
 
 Implemented in `backend/app/pipeline/verdict.py`, with clients in `backend/app/llm/groq.py` and `backend/app/llm/ollama.py`.
 
@@ -194,6 +195,7 @@ Implemented in `backend/app/pipeline/verdict.py`, with clients in `backend/app/l
 - **Headlines.** Fact-check headlines usually state the verdict, so every passage is shown with its title.
 - **Citations cannot point at missing passages.** Passages are shown as `E1`..`E8`, and the JSON schema allows only those labels in `citations`, so under constrained decoding (Groq strict mode, Ollama `format`) an unseen passage cannot be cited. A post-parse check guards the same rule, plus the 120-word rationale limit; a violation gets one retry with the error shown.
 - **Fallback.** Groq first; on `ReasonerUnavailable` or invalid output twice, the local vision model drafts and `fallback` is set. The fallback is measurably weaker: on an invented claim it answered `false` at 0.98 because no passage mentioned the claim, where Groq answered `unverifiable`. So the router never fast-tracks a fallback verdict on model judgement alone (section 3.7).
+- **Nepali check.** The model writes both rationales at once and sometimes flips a fact in the Nepali: a published test verdict said "the video is not from Surat" beside an English "it is from Surat". gpt-oss-20b (its own Groq quota) compares the two; any problem, or a failed check, is a router conflict, so a checker reads the Nepali before it is published. On 2026-10-12 it caught both planted flips and 3 real problems in 28 eval verdicts, with one borderline flag (a place name left out).
 - **Cost.** About 2,900 prompt tokens and 400–600 completion tokens per verdict. Groq's free tier allows 8,000 tokens/min, so about two verdicts per minute.
 - **Variance.** Repeated runs at temperature 0 still vary: the Rasuwa post came back `false` 0.90, `misleading` 0.78, and `false` 0.92. All three were correct refuting labels citing the debunk, but only the last cleared the fast-track threshold. The eval set measures this variance; the router's thresholds absorb it.
 
