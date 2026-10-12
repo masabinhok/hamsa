@@ -11,10 +11,17 @@ from datetime import timedelta
 from pathlib import Path
 
 from app.config import get_settings
-from app.pipeline.contracts import Route, RouteDecision
+from app.pipeline.contracts import Duplicate, DuplicateBasis, Route, RouteDecision
 from app.pipeline.run import Result
-from app.router.route import StageOutputs
-from app.store.cases import Database, claim_job, complete_job, requeue_job
+from app.router.route import StageOutputs, route
+from app.store.cases import (
+    Database,
+    claim_job,
+    complete_job,
+    media_duplicate,
+    open_claims,
+    requeue_job,
+)
 from app.store.models import Case, Job
 
 MAX_ATTEMPTS = 3
@@ -37,17 +44,23 @@ def process_next(db: Database, runner: Runner, media_root: Path) -> str | None:
         case = session.get_one(Case, case_id)
         text = case.text
         paths = [media_root / case_id / m.filename for m in case.media]
+        original = media_duplicate(session, case)
 
-    try:
-        result = runner(text, paths)
-    except Exception as error:  # a pipeline bug must not loop forever or lose the case
-        log.exception("case %s: pipeline error", case_id)
-        result = Result(
-            outputs=StageOutputs(),
-            decision=RouteDecision(
-                route=Route.HUMAN_REVIEW, reasons=[f"pipeline error: {type(error).__name__}"]
-            ),
-        )
+    if original is not None:
+        # The same file is already on the desk: merge without spending any model time.
+        same = StageOutputs(duplicate=Duplicate(case_id=original, basis=DuplicateBasis.MEDIA))
+        result = Result(outputs=same, decision=route(same))
+    else:
+        try:
+            result = runner(text, paths)
+        except Exception as error:  # a pipeline bug must not loop forever or lose the case
+            log.exception("case %s: pipeline error", case_id)
+            result = Result(
+                outputs=StageOutputs(),
+                decision=RouteDecision(
+                    route=Route.HUMAN_REVIEW, reasons=[f"pipeline error: {type(error).__name__}"]
+                ),
+            )
 
     with db.session.begin() as session:
         job = session.get_one(Job, job_id)
@@ -76,7 +89,10 @@ def main() -> int:
     pipeline = build_pipeline(settings)
 
     def runner(text: str | None, media: Sequence[Path]) -> Result:
-        return run(pipeline, text, media)
+        # The case being run is PROCESSING, so the routed cases never include itself.
+        with db.session() as session:
+            waiting = open_claims(session)
+        return run(pipeline, text, media, open_claims=waiting)
 
     log.info("worker ready")
     try:

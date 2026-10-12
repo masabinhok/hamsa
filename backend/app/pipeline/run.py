@@ -16,6 +16,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException
 from app.ingest.frames import Frame, frames_of
 from app.pipeline.contracts import (
     Claim,
+    Duplicate,
     Evidence,
     MediaMatch,
     RouteDecision,
@@ -23,6 +24,7 @@ from app.pipeline.contracts import (
     StageFailure,
     Verdict,
 )
+from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
 from app.pipeline.retrieve import EmbedText, EvidenceStore, retrieve
 from app.pipeline.verdict import Reasoner, judge
@@ -58,9 +60,14 @@ def is_transient(error: Exception) -> bool:
 
 
 def run(
-    pipeline: Pipeline, text: str | None, media: Sequence[Path], seen_on: date | None = None
+    pipeline: Pipeline,
+    text: str | None,
+    media: Sequence[Path],
+    seen_on: date | None = None,
+    open_claims: Sequence[OpenClaim] = (),
 ) -> Result:
-    """`seen_on` is the post's date when known (eval items); otherwise today, the submission."""
+    """`seen_on` is the post's date when known (eval items); otherwise today, the submission.
+    `open_claims` are the cases already on the desk, for the duplicate check."""
     seconds: dict[str, float] = {}
     failures: list[StageFailure] = []
 
@@ -82,12 +89,14 @@ def run(
 
     def finish(
         claim: Claim | None = None,
+        duplicate: Duplicate | None = None,
         media_match: MediaMatch | None = None,
         evidence: Evidence | None = None,
         verdict: Verdict | None = None,
     ) -> Result:
         outputs = StageOutputs(
             failures=tuple(failures),
+            duplicate=duplicate,
             claim=claim,
             media_match=media_match,
             evidence=evidence,
@@ -103,6 +112,13 @@ def run(
     claim = stage(Stage.EXTRACT, lambda: pipeline.extract(text, frames))
     if claim is None or not claim.checkable:
         return finish(claim=claim)
+
+    if open_claims:
+        duplicate = stage(
+            Stage.DEDUP, lambda: claim_duplicate(claim, open_claims, pipeline.embed_text)
+        )
+        if duplicate is not None or failures:
+            return finish(claim=claim, duplicate=duplicate)
 
     matched: MediaMatch | None = stage(
         Stage.MEDIA_MATCH, lambda: match_media(frames, pipeline.archive, pipeline.embed_image)

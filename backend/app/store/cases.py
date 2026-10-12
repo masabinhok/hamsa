@@ -22,6 +22,7 @@ from app.pipeline.contracts import (
     Verdict,
     VerdictLabel,
 )
+from app.pipeline.duplicate import OpenClaim
 from app.router.route import StageOutputs
 from app.store.models import (
     Base,
@@ -218,6 +219,41 @@ def published(session: Session, limit: int = 50) -> list[Case]:
         .limit(limit)
     )
     return list(session.scalars(query))
+
+
+OPEN = (CaseStatus.RECEIVED, CaseStatus.PROCESSING, CaseStatus.ROUTED)
+
+
+def media_duplicate(session: Session, case: Case) -> str | None:
+    """The oldest earlier open case holding one of this case's files, byte for byte.
+
+    Only earlier cases: otherwise the first report would merge into its own later copy.
+    """
+    digests = [m.sha256 for m in case.media]
+    if not digests:
+        return None
+    query = (
+        select(Case.id)
+        .join(Media)
+        .where(
+            Media.sha256.in_(digests),
+            Case.created_at < case.created_at,
+            Case.status.in_(OPEN),
+        )
+        .order_by(Case.created_at)
+        .limit(1)
+    )
+    return session.scalar(query)
+
+
+def open_claims(session: Session) -> list[OpenClaim]:
+    """Claims of the cases waiting on the desk, for the pipeline's duplicate check."""
+    claims: list[OpenClaim] = []
+    for case in session.scalars(select(Case).where(Case.status == CaseStatus.ROUTED)):
+        claim = outputs_from_json(case.outputs).claim if case.outputs else None
+        if claim and claim.checkable:
+            claims.append(OpenClaim(case.id, claim.claim_en, tuple(claim.places)))
+    return claims
 
 
 def outputs_to_json(outputs: StageOutputs) -> dict[str, Any]:
