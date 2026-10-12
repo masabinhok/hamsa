@@ -35,6 +35,9 @@ export interface ArchiveHit {
   frame_index: number;
   phash_distance: number | null;
   cosine: number | null;
+  inliers: number | null;
+  post_seconds: number | null;
+  archive_seconds: number | null;
   archive_label: "prior" | "verified_genuine";
   original_context: string;
   original_date: string | null;
@@ -125,8 +128,9 @@ export const desk = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(decision),
     }),
-  media: async (token: string, id: string, name: string): Promise<Blob> => {
-    const response = await fetch(`${API_URL}/desk/cases/${id}/media/${encodeURIComponent(name)}`, {
+  // A desk path such as /desk/cases/{id}/media/{name} or /desk/cases/{id}/archive/{archive_id}.
+  file: async (token: string, path: string): Promise<Blob> => {
+    const response = await fetch(`${API_URL}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new ApiError(response.status, "media unavailable");

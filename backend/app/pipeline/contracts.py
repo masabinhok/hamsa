@@ -56,6 +56,10 @@ class ArchiveHit(Contract):
     cosine: Annotated[float | None, Field(ge=-1.0, le=1.0)] = None
     # ORB keypoint matches that agree on one geometric transform between the frames.
     inliers: Annotated[int | None, Field(ge=0)] = None
+    # Where each side of the best frame pair sits, so the desk can show them together.
+    post_seconds: Annotated[float | None, Field(ge=0)] = None
+    archive_seconds: Annotated[float | None, Field(ge=0)] = None
+    archive_media: str | None = None  # path under data/, served to checkers only
     archive_label: ArchiveLabel
     original_context: NonEmptyStr
     original_date: date | None = None

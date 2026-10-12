@@ -23,7 +23,9 @@ def db(tmp_path: Path) -> Database:
 
 @pytest.fixture
 def client(db: Database, tmp_path: Path) -> TestClient:
-    app = create_app(db, tmp_path / "media", SecretStr(TOKEN), "http://localhost:3000")
+    app = create_app(
+        db, tmp_path / "media", SecretStr(TOKEN), "http://localhost:3000", tmp_path / "data"
+    )
     return TestClient(app)
 
 
@@ -197,3 +199,24 @@ def test_rate_limiter_uses_a_sliding_window() -> None:
 def test_submissions_are_rate_limited_per_client(client: TestClient) -> None:
     codes = [client.post("/cases", data={"text": f"claim {i}"}).status_code for i in range(11)]
     assert codes == [202] * 10 + [429]
+
+
+def test_archive_original_is_served_only_for_a_match_inside_data(
+    client: TestClient, db: Database, tmp_path: Path
+) -> None:
+    clip = tmp_path / "data" / "archive" / "media" / "kullu.mp4"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(b"video")
+    (tmp_path / "secret.txt").write_text("not for checkers")
+    hits = [
+        hit(archive_id="kullu", archive_media="archive/media/kullu.mp4", archive_seconds=4.0),
+        hit(archive_id="escape", archive_media="../secret.txt"),
+    ]
+    add_routed_case(db, "c1", routed_result(outputs(hits=hits)))
+
+    served = client.get("/desk/cases/c1/archive/kullu", headers=AUTH)
+    assert served.status_code == 200
+    assert served.content == b"video"
+    assert client.get("/desk/cases/c1/archive/escape", headers=AUTH).status_code == 404
+    assert client.get("/desk/cases/c1/archive/unknown", headers=AUTH).status_code == 404
+    assert client.get("/desk/cases/c1/archive/kullu").status_code == 401

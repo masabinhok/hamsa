@@ -57,6 +57,8 @@ export function CaseView({ id }: { id: string }) {
   const verdict = outputs?.verdict ?? null;
   const passages = outputs?.evidence?.passages ?? [];
   const hits = outputs?.media_match?.hits ?? [];
+  const strong = hits.filter(isStrong);
+  const weak = hits.filter((hit) => !isStrong(hit)).slice(0, 3);
 
   return (
     <article className={styles.case}>
@@ -113,14 +115,34 @@ export function CaseView({ id }: { id: string }) {
             <div className={styles.mediaGrid}>
               <div className={styles.mediaColumn}>
                 {current.media.map((name) => (
-                  <AuthedMedia key={name} caseId={current.id} name={name} />
+                  <AuthedMedia
+                    key={name}
+                    path={`/desk/cases/${current.id}/media/${encodeURIComponent(name)}`}
+                    alt="Submitted media"
+                    // Match timestamps index the post's frames; only unambiguous for one file.
+                    start={current.media.length === 1 ? strong[0]?.post_seconds : null}
+                  />
                 ))}
               </div>
               <div className={styles.mediaColumn}>
-                {hits.length === 0 ? (
+                {strong.length === 0 && (
                   <p className={styles.quiet}>No match in the archive of known footage.</p>
-                ) : (
-                  hits.slice(0, 3).map((hit) => <ArchiveMatch key={hit.archive_id} hit={hit} />)
+                )}
+                {strong.map((hit) => (
+                  <ArchiveMatch key={hit.archive_id} caseId={current.id} hit={hit} />
+                ))}
+                {weak.length > 0 && (
+                  <div className={styles.match}>
+                    <p className={styles.matchTitle}>Look-alikes, not the same footage</p>
+                    {weak.map((hit) => (
+                      <p key={hit.archive_id} className={styles.quiet}>
+                        {hit.original_context} ({Math.round((hit.cosine ?? 0) * 100)}% similar){" "}
+                        <a href={hit.source_url} target="_blank" rel="noreferrer">
+                          open
+                        </a>
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -184,17 +206,41 @@ function DraftVerdict({ verdict }: { verdict: Verdict }) {
   );
 }
 
-function ArchiveMatch({ hit }: { hit: ArchiveHit }) {
-  const origin = hit.archive_label === "prior" ? "Older footage" : "Verified footage of this disaster";
-  const closeness =
-    hit.phash_distance !== null && hit.phash_distance <= 16
-      ? `near-identical frame: ${hit.phash_distance} of 64 fingerprint bits differ`
-      : `visually similar: ${Math.round((hit.cosine ?? 0) * 100)}% similarity`;
+// The limits the router uses for a strong match (backend/app/router/route.py Thresholds).
+const MIN_INLIERS = 30;
+const MAX_PHASH = 10;
+
+const MIN_COSINE = 0.97;
+
+function isStrong(hit: ArchiveHit): boolean {
+  return (
+    (hit.inliers ?? 0) >= MIN_INLIERS ||
+    (hit.phash_distance ?? 64) <= MAX_PHASH ||
+    (hit.cosine ?? 0) >= MIN_COSINE
+  );
+}
+
+function closenessOf(hit: ArchiveHit): string {
+  if (hit.inliers !== null && hit.inliers >= MIN_INLIERS)
+    return `same footage: ${hit.inliers} matching points line up with the original`;
+  if (hit.phash_distance !== null && hit.phash_distance <= MAX_PHASH)
+    return `near-identical frame: ${hit.phash_distance} of 64 fingerprint bits differ`;
+  return `near-identical image: ${Math.round((hit.cosine ?? 0) * 100)}% similarity`;
+}
+
+function ArchiveMatch({ caseId, hit }: { caseId: string; hit: ArchiveHit }) {
+  // verified_genuine means genuine footage of the event named below, not necessarily this one.
+  const origin = hit.archive_label === "prior" ? "Older footage" : "Verified genuine footage";
   return (
     <div className={styles.match} data-archive={hit.archive_label}>
       <p className={styles.matchTitle}>{origin}</p>
+      <AuthedMedia
+        path={`/desk/cases/${caseId}/archive/${encodeURIComponent(hit.archive_id)}`}
+        alt={`Archive original: ${hit.original_context}`}
+        start={hit.archive_seconds}
+      />
       <p>{hit.original_context}</p>
-      <p className={styles.quiet}>{closeness}</p>
+      <p className={styles.quiet}>{closenessOf(hit)}</p>
       <a href={hit.source_url} target="_blank" rel="noreferrer">
         Open the original
       </a>
