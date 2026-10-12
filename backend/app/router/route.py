@@ -240,6 +240,9 @@ def _conflicts(
             marks = ", ".join(ai_marks)
             conflicts.append(f"verdict is true but ai-tool watermark visible: {marks}")
 
+    if verdict.nepali_issue:
+        conflicts.append(f"Nepali rationale needs a checker: {verdict.nepali_issue}")
+
     expected = _expected_stance(verdict.label)
     if expected is not None:
         for citation in verdict.citations:

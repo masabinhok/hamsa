@@ -28,9 +28,11 @@ def build_pipeline(settings: Settings) -> Pipeline:
     ollama = OllamaClient(str(settings.ollama_host))
     qdrant = QdrantClient(url=str(settings.qdrant_url))
     reasoners: list[tuple[Reasoner, str]] = []
+    checker: tuple[Reasoner, str] | None = None
     if settings.groq_api_key is not None:
         groq = GroqClient(settings.groq_api_key.get_secret_value())
         reasoners.append((groq, settings.reasoning_model))
+        checker = (groq, settings.checking_model)
     reasoners.append((ollama, settings.vision_model))  # fallback (ADR 0001, 0007)
 
     def extract(text: str | None, frames: Sequence[Frame]) -> Claim:
@@ -47,6 +49,7 @@ def build_pipeline(settings: Settings) -> Pipeline:
         embed_text=embed_text,
         reasoners=reasoners,
         incident_start=settings.incident_start,
+        nepali_checker=checker,
     )
 
 

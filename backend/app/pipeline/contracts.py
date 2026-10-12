@@ -163,6 +163,9 @@ class Verdict(Contract):
     # Measured weaker (it read "no evidence" as "false"), so the router never fast-tracks
     # on its judgement alone.
     fallback: bool = False
+    # Set when the Nepali rationale may not say what the English says (or could not be
+    # checked); the Nepali is published to the public, so a checker must read it first.
+    nepali_issue: str | None = None
 
     def unknown_citations(self, evidence: Evidence) -> list[str]:
         """Cited ids absent from the evidence the model was given: hallucinations."""

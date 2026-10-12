@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # Optional: without it, verdicts fall back to the local vision model (ADR 0001, 0007).
     groq_api_key: SecretStr | None = None
     reasoning_model: str = "openai/gpt-oss-120b"
+    checking_model: str = "openai/gpt-oss-20b"
 
     ollama_host: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     vision_model: str = "qwen3-vl:8b-instruct"
