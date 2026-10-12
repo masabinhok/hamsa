@@ -111,10 +111,11 @@ Implemented in `backend/app/pipeline/media_match.py` ([ADR 0003](adr/0003-two-ti
 1. **Canonicalise.** Trim uniform borders, such as letterbox bars and screenshot chrome, which reposts add and pHash is sensitive to.
 2. **pHash.** A 64-bit perceptual hash, stored in Qdrant as a +1/-1 vector. For such vectors, dot product = 64 − 2 × Hamming distance, so Qdrant's dot-product search ranks by exact Hamming distance. Submitted frames are also hashed mirrored, and the smaller distance counts.
 3. **SigLIP 2** (`google/siglip2-base-patch16-224`, vision tower on the CPU). A normalised embedding, searched by cosine.
+4. **ORB keypoints** (1000 per frame at 640 px, stored in the payload). Every candidate from either search is verified with ORB plus RANSAC: the inliers are keypoint matches consistent with one shift, scale and rotation, which survive crops, blurred bars, captions and screenshots ([ADR 0009](adr/0009-orb-geometric-verification.md)).
 
 Candidates from both searches get both scores. Each archive item keeps its best hit across all submitted frames.
 
-**A hit is strong if pHash distance ≤ 10 or cosine ≥ 0.97.** The limits started at 16 and 0.97 from a robustness check on Creative Commons flood photos (`uv run python -m app.eval.media_robustness`, run 2026-10-06, table below with the current result):
+**A hit is strong if pHash distance ≤ 10, cosine ≥ 0.97, or at least 30 ORB inliers.** On the eval set the reposts ORB found scored 68 to 438 inliers and unrelated clips at most 23, which took recycled recall from 2 to 6 of 9. The pHash and cosine limits started at 16 and 0.97 from a robustness check on Creative Commons flood photos (`uv run python -m app.eval.media_robustness`, run 2026-10-06, table below with the current result):
 
 | Case | pHash distance | Cosine | Strong? |
 |---|---|---|---|
@@ -226,7 +227,7 @@ flowchart TD
 ```
 
 **Definitions**
-- **Strong hit:** pHash distance of 10 or less, or SigLIP cosine of 0.97 or more (section 3.3). Recycled evidence is a strong hit on `prior` footage, or on `verified_genuine` footage dated more than 30 days (`same_event_days`) before the post. The post's date is the date it claims, else the date it was posted or submitted. A recent `verified_genuine` hit does not count, because genuine footage can still carry a false caption, and a post that names its event's own date ("the 2026 Rasuwa flood") is not recycled.
+- **Strong hit:** pHash distance of 10 or less, SigLIP cosine of 0.97 or more, or at least 30 ORB inliers (section 3.3). Recycled evidence is a strong hit on `prior` footage, or on `verified_genuine` footage dated more than 30 days (`same_event_days`) before the post. The post's date is the date it claims, else the date it was posted or submitted. A recent `verified_genuine` hit does not count, because genuine footage can still carry a false caption, and a post that names its event's own date ("the 2026 Rasuwa flood") is not recycled.
 - **AI-tool watermark:** a reported watermark naming a known generator (Veo, Sora, Gemini, Runway, Kling, and others).
 - **Independent agreeing sources:** distinct publishers among the cited passages whose stance matches the verdict (`refutes` for false or misleading, `supports` for true). Two passages from the same publisher count once, and so do two editions of one outlet: Onlinekhabar's Nepali and English sites were first counted as two sources, which would have let the fallback model's wrong verdict fast-track.
 - **Prior fact-check:** a cited passage from a fact-checker whose stance matches the verdict. Catching already-debunked claims as they resurface is Hamsa's core job, so one agreeing fact-check is enough, with confidence and no conflict.

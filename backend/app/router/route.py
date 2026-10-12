@@ -54,6 +54,8 @@ class Thresholds:
 
     phash_max_distance: int = 10
     cosine_min: float = 0.97
+    # ORB inliers (ADR 0009): reposts found by ORB scored 68-438, unrelated clips at most 23.
+    min_inliers: int = 30
     fast_track_confidence: float = 0.85
     min_independent_sources: int = 2
     # Footage of one disaster keeps being reposted, correctly, for weeks after it.
@@ -167,7 +169,8 @@ def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> 
 def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool:
     by_hash = hit.phash_distance is not None and hit.phash_distance <= t.phash_max_distance
     by_embedding = hit.cosine is not None and hit.cosine >= t.cosine_min
-    return by_hash or by_embedding
+    by_geometry = hit.inliers is not None and hit.inliers >= t.min_inliers
+    return by_hash or by_embedding or by_geometry
 
 
 def _is_older_footage(hit: ArchiveHit, reference: date | None, t: Thresholds) -> bool:

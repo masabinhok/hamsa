@@ -11,7 +11,7 @@ from app.pipeline.contracts import (
     StageFailure,
     VerdictLabel,
 )
-from app.router.route import StageOutputs, Thresholds, route
+from app.router.route import StageOutputs, Thresholds, is_strong_match, route
 from tests.factories import cite, claim, hit, outputs, passage, verdict
 
 TWO_SOURCES = [passage("p1", "Kathmandu Post"), passage("p2", "Onlinekhabar")]
@@ -74,6 +74,12 @@ def test_strong_prior_match_with_false_verdict_is_fast_tracked() -> None:
     assert decision.proposed_label is VerdictLabel.FALSE
 
 
+def test_geometric_match_is_strong_from_min_inliers() -> None:
+    t = Thresholds()
+    assert is_strong_match(hit(phash_distance=40, inliers=t.min_inliers), t)
+    assert not is_strong_match(hit(phash_distance=40, inliers=t.min_inliers - 1), t)
+
+
 @pytest.mark.parametrize(
     ("phash_distance", "cosine", "strong"),
     [
@@ -83,6 +89,8 @@ def test_strong_prior_match_with_false_verdict_is_fast_tracked() -> None:
         (None, 0.97, True),
         (None, 0.9699, False),
         (30, 0.98, True),
+        # A clip with no hash or embedding match and too few inliers is not strong.
+        (40, 0.5, False),
         # Measured: a different photo of the same river. Must never count as recycled.
         (26, 0.946, False),
     ],

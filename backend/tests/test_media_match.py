@@ -3,7 +3,7 @@ from collections.abc import Callable, Sequence
 import numpy as np
 import pytest
 from numpy.typing import NDArray
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from qdrant_client import QdrantClient
 
 from app.ingest.frames import Frame
@@ -15,10 +15,12 @@ from app.pipeline.media_match import (
     Embeddings,
     canonical,
     hamming,
+    inliers,
     match_media,
+    orb_features,
     phash_vector,
 )
-from tests.images import letterbox, photo
+from tests.images import letterbox, photo, textured
 
 
 def fake_embed(images: Sequence[Image.Image]) -> Embeddings:
@@ -104,3 +106,35 @@ def test_one_hit_per_archive_item_from_the_best_frame(index: ArchiveIndex) -> No
 
 def test_no_frames_means_no_hits(index: ArchiveIndex) -> None:
     assert match_media([], index, fake_embed).hits == []
+
+
+def tiktok_style(image: Image.Image) -> Image.Image:
+    """Crop the middle, add a caption, and set it on blurred bars: what defeats pHash."""
+    middle = image.crop((120, 40, 520, 440))
+    ImageDraw.Draw(middle).rectangle((0, 0, middle.width, 40), fill="white")
+    canvas = image.resize((720, 720)).filter(ImageFilter.GaussianBlur(25))
+    canvas.paste(middle, ((720 - middle.width) // 2, (720 - middle.height) // 2))
+    return canvas
+
+
+def test_orb_finds_footage_inside_a_reframed_repost() -> None:
+    original = orb_features(textured(3))
+    repost = orb_features(tiktok_style(textured(3)))
+    unrelated = orb_features(textured(4))
+    assert original
+    assert repost
+    assert unrelated
+    assert inliers(repost, original) >= 100
+    assert inliers(unrelated, original) < 20
+
+
+def test_reframed_repost_matches_through_the_archive_by_geometry() -> None:
+    archive = ArchiveIndex(QdrantClient(":memory:"))
+    archive.recreate()
+    archive.add(ORIGINAL, [Frame(0, 0.0, textured(3))], fake_embed)
+
+    [hit] = match_media(frames(tiktok_style(textured(3))), archive, fake_embed).hits
+
+    assert hit.archive_id == "kullu-2023"
+    assert hit.inliers is not None
+    assert hit.inliers >= 100
