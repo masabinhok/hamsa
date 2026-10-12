@@ -185,6 +185,7 @@ class ArchiveEntry:
     original_context: str
     original_date: date | None
     source_url: str
+    media: str | None = None  # path under data/, for the desk's side-by-side view
 
 
 class ArchiveIndex:
@@ -219,6 +220,8 @@ class ArchiveIndex:
                     if entry.original_date
                     else None,
                     "source_url": entry.source_url,
+                    "media": entry.media,
+                    "seconds": frame.timestamp_s,
                 }
                 | _pack(orb_features(image)),
             )
@@ -279,6 +282,9 @@ def match_media(frames: Sequence[Frame], index: ArchiveIndex, embed: Embed) -> M
                 phash_distance=distance,
                 cosine=cosine,
                 inliers=count,
+                post_seconds=frame.timestamp_s,
+                archive_seconds=payload.get("seconds"),
+                archive_media=payload.get("media"),
                 archive_label=ArchiveLabel(payload["label"]),
                 original_context=payload["original_context"],
                 original_date=payload["original_date"],

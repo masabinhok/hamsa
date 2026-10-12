@@ -84,6 +84,7 @@ def collect_entries() -> list[tuple[ArchiveEntry, Path]]:
                 original_context=row.original_context,
                 original_date=row.original_date,
                 source_url=str(row.source_url),
+                media=f"archive/media/{row.media_file}",
             )
             entries.append((entry, ARCHIVE_DIR / "media" / row.media_file))
 
@@ -99,6 +100,7 @@ def collect_entries() -> list[tuple[ArchiveEntry, Path]]:
             original_context=item.original_context,
             original_date=None,
             source_url=str(item.original_source_url),
+            media=f"eval/media/{original}",
         )
         entries.append((entry, EVAL_DIR / "media" / original))
 
