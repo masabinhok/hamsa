@@ -12,5 +12,6 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0006](0006-direct-model-calls-no-framework.md) | Direct model calls with schema-validated JSON, no LLM framework | Accepted |
 | [0007](0007-gpu-for-vision-model-only.md) | GPU reserved for the vision model; embedders on CPU | Accepted |
 | [0008](0008-qdrant-vector-store.md) | Qdrant as the vector store | Accepted |
+| [0009](0009-orb-geometric-verification.md) | ORB keypoints verify media matches geometrically | Accepted |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.
