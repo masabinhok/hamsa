@@ -39,7 +39,7 @@ from app.api.schemas import (
     PublishedVerdict,
     Source,
 )
-from app.config import get_settings
+from app.config import REPO_ROOT, get_settings
 from app.pipeline.contracts import Route, VerdictLabel
 from app.store.cases import (
     Database,
@@ -213,6 +213,22 @@ def media(request: Request, session: DbSession, case_id: str, name: str) -> File
     return FileResponse(media_root / case_id / name)
 
 
+@desk.get("/cases/{case_id}/archive/{archive_id}")
+def archive_media(
+    request: Request, session: DbSession, case_id: str, archive_id: str
+) -> FileResponse:
+    """The archive original behind one of this case's matches, for the side-by-side view."""
+    case = get_case(session, case_id)
+    matched = outputs_from_json(case.outputs).media_match if case.outputs else None
+    hits = matched.hits if matched else []
+    media = next((h.archive_media for h in hits if h.archive_id == archive_id), None)
+    data_root: Path = request.app.state.data_root
+    path = (data_root / media).resolve() if media else None
+    if path is None or not path.is_relative_to(data_root.resolve()) or not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no archive media for this match")
+    return FileResponse(path)
+
+
 @desk.post("/cases/{case_id}/decision")
 def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
     case = get_case(session, case_id)
@@ -236,10 +252,15 @@ def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
 
 
 def create_app(
-    db: Database, media_root: Path, desk_token: SecretStr | None, origin: str
+    db: Database,
+    media_root: Path,
+    desk_token: SecretStr | None,
+    origin: str,
+    data_root: Path = REPO_ROOT / "data",
 ) -> FastAPI:
     app = FastAPI(title="Hamsa", version="0.1.0")
     app.state.db, app.state.media_root, app.state.desk_token = db, media_root, desk_token
+    app.state.data_root = data_root
     app.state.limiter = RateLimiter(SUBMISSIONS_PER_MINUTE)
     app.add_middleware(
         CORSMiddleware,
