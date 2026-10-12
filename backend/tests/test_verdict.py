@@ -8,6 +8,7 @@ from app.llm.structured import Check, StructuredOutputError
 from app.pipeline.contracts import Evidence, MediaMatch, Stance, VerdictLabel
 from app.pipeline.verdict import (
     build_prompt,
+    check_nepali,
     draft_schema,
     judge,
     strip_labels,
@@ -182,3 +183,42 @@ def test_bare_label_in_running_text_is_rejected_for_rewrite() -> None:
     reasoner = FakeReasoner(draft(rationale_en="As E1 shows, the video is old."))
     with pytest.raises(StructuredOutputError, match="mentions evidence labels"):
         judge(claim(), MediaMatch(), EVIDENCE, [(reasoner, "gpt-oss")], has_media=True)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "issue"),
+    [
+        ({"faithful": True, "problem": ""}, None),
+        ({"faithful": False, "problem": "verdict direction"}, "verdict direction"),
+        ({"faithful": False, "problem": " "}, "the meaning differs"),
+        (ReasonerUnavailable("http 429"), "not checked: http 429"),
+    ],
+)
+def test_nepali_rationale_is_checked_against_the_english(
+    outcome: dict[str, Any] | Exception, issue: str | None
+) -> None:
+    checker = FakeReasoner(outcome)
+    english = "The video is from Surat, not Butwal."
+    nepali = "भिडियो सुरतको होइन, बुटवलको हो।"
+    assert check_nepali(english, nepali, (checker, "gpt-oss-20b")) == issue
+    assert english in checker.prompts[0]
+    assert nepali in checker.prompts[0]
+
+
+def test_verdict_carries_the_nepali_issue() -> None:
+    checker = FakeReasoner({"faithful": False, "problem": "negation flipped"})
+    verdict = judge(
+        claim(),
+        MediaMatch(),
+        EVIDENCE,
+        [(FakeReasoner(draft()), "gpt-oss")],
+        has_media=False,
+        checker=(checker, "gpt-oss-20b"),
+    )
+    assert verdict.nepali_issue == "negation flipped"
+
+
+def test_without_a_checker_the_nepali_counts_as_unchecked() -> None:
+    reasoners = [(FakeReasoner(draft()), "gpt-oss")]
+    verdict = judge(claim(), MediaMatch(), EVIDENCE, reasoners, has_media=False)
+    assert verdict.nepali_issue == "not checked: no checking model configured"
