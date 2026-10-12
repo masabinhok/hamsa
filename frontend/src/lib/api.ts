@@ -107,17 +107,39 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { ...init.headers, Authorization: `Bearer ${token}` },
-  });
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new ApiError(response.status, body.detail ?? response.statusText);
   }
   return response.json() as Promise<T>;
 }
+
+function call<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+}
+
+export interface PublishedVerdict {
+  label: Label;
+  rationale_en: string;
+  rationale_ne: string;
+  sources: { name: string; url: string; stance: Stance }[];
+  published_at: string;
+}
+
+export interface PublicCase {
+  id: string;
+  status: CaseStatus;
+  verdict: PublishedVerdict | null;
+}
+
+// The public side: anyone can submit a post and follow its verdict, no sign-in.
+export const site = {
+  submit: (form: FormData) => request<{ id: string }>("/cases", { method: "POST", body: form }),
+  case: (id: string) => request<PublicCase>(`/cases/${encodeURIComponent(id)}`),
+  verdicts: () => request<PublicCase[]>("/verdicts"),
+};
 
 export const desk = {
   queue: (token: string) => call<DeskSummary[]>(token, "/desk/queue"),
