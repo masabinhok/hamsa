@@ -136,11 +136,11 @@ A hit on `prior` footage is evidence that the post is recycled. A hit on `verifi
 
 ### 3.4 Duplicate check
 
-A case is a duplicate of an open case if either:
-- **exact media:** any media `sha256` or pHash matches exactly, or
-- **same claim:** the bge-m3 cosine between `claim_en` values is 0.92 or more *and* the `places` overlap. *Starting value.*
+A case is a duplicate of an earlier open case (received, processing, or waiting on the desk) if either:
+- **exact media:** any file's `sha256` matches. The worker checks this before running the pipeline (`media_duplicate` in `backend/app/store/cases.py`), so an identical re-upload costs no model time. Only earlier cases count, so a first report never merges into its own later copy.
+- **same claim:** after extraction, the bge-m3 cosine between `claim_en` values is 0.92 or more *and* a place overlaps, where one place name containing the other counts ("बुटवल" and "बुटवल उपमहानगरपालिका"). `claim_duplicate` in `backend/app/pipeline/duplicate.py`. *Starting value.*
 
-A duplicate is merged under the existing case, which strengthens its virality signal. It is not processed again.
+A duplicate is merged under the existing case, which strengthens its virality signal. It is not processed further. Re-encoded copies (different bytes) are not caught here; they still reach media match, where the archive finds them if the footage is known. Checked end to end on 2026-10-12: an identical video merged by media, the same caption without the video merged by claim.
 
 ### 3.5 Evidence retrieval (bge-m3, CPU)
 

@@ -87,6 +87,8 @@ class GroqClient:
                 self._sleep(wait)
                 continue
 
+            if _failed_generation(response) and attempt < MAX_ATTEMPTS:
+                continue  # the model broke the schema this time; sampling again usually works
             if response.is_error:
                 # e.g. 400 json_validate_failed when the model breaks the schema; the
                 # local model can still answer, and Groq's reason must reach the record.
@@ -94,6 +96,19 @@ class GroqClient:
             payload: dict[str, Any] = response.json()
             return payload["choices"][0]["message"]["content"]
         raise ReasonerUnavailable("unreachable")  # loop always returns or raises
+
+
+# Groq's 400 codes for output the model generated but could not fit to the schema.
+FAILED_GENERATION = ("json_validate_failed", "output_parse_failed")
+
+
+def _failed_generation(response: httpx.Response) -> bool:
+    if response.status_code != 400:
+        return False
+    try:
+        return response.json()["error"]["code"] in FAILED_GENERATION
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def _retry_after(response: httpx.Response) -> float:
