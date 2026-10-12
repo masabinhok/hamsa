@@ -103,6 +103,40 @@ class Reasoner(Protocol):
     ) -> T: ...
 
 
+NEPALI_CHECK_SYSTEM = """\
+You check a Nepali translation of an English fact-check rationale. Decide whether the \
+Nepali says the same thing: the same verdict direction, facts, places, dates, numbers and \
+negations. Ignore style, spelling and word choice. "problem" names the contradicted or \
+missing fact, or is empty when the Nepali is faithful.
+"""
+
+
+class NepaliCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    faithful: bool
+    problem: str
+
+
+def check_nepali(english: str, nepali: str, checker: tuple[Reasoner, str] | None) -> str | None:
+    """None when the Nepali says what the English says, otherwise why a checker must read it.
+
+    The verdict model writes both rationales at once and sometimes flips a fact in the Nepali
+    ("the video is not from Surat" beside "it is from Surat"); measured 2026-10-12, the
+    checker caught both planted flips and 3 real problems in 28 eval verdicts.
+    """
+    if checker is None:
+        return "not checked: no checking model configured"
+    client, model = checker
+    try:
+        result = client.structured(
+            model, NepaliCheck, NEPALI_CHECK_SYSTEM, f"English:\n{english}\n\nNepali:\n{nepali}"
+        )
+    except (ReasonerUnavailable, StructuredOutputError) as error:
+        return f"not checked: {error}"
+    return None if result.faithful else (result.problem.strip() or "the meaning differs")
+
+
 def labels_for(evidence: Evidence) -> list[str]:
     return [f"E{i}" for i in range(1, len(evidence.passages) + 1)]
 
@@ -159,6 +193,7 @@ def judge(
     reasoners: Sequence[tuple[Reasoner, str]],
     *,
     has_media: bool,
+    checker: tuple[Reasoner, str] | None = None,
 ) -> Verdict:
     """Ask each (client, model) in order until one returns a valid draft."""
     labels = labels_for(evidence)
@@ -194,16 +229,19 @@ def judge(
         passage_ids = {
             label: p.passage_id for label, p in zip(labels, evidence.passages, strict=True)
         }
+        rationale_en = strip_labels(draft.rationale_en)
+        rationale_ne = strip_labels(draft.rationale_ne)
         return Verdict(
             label=draft.label,
             confidence=draft.confidence,
-            rationale_en=strip_labels(draft.rationale_en),
-            rationale_ne=strip_labels(draft.rationale_ne),
+            rationale_en=rationale_en,
+            rationale_ne=rationale_ne,
             citations=[
                 Citation(passage_id=passage_ids[c.evidence], stance=c.stance)
                 for c in draft.citations
             ],
             model=model,
             fallback=position > 0,
+            nepali_issue=check_nepali(rationale_en, rationale_ne, checker),
         )
     raise StructuredOutputError("; ".join(failures) or "no reasoner configured")
