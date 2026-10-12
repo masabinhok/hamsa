@@ -19,6 +19,13 @@ def photo(seed: int, size: tuple[int, int] = (640, 480)) -> Image.Image:
     )
 
 
+def textured(seed: int, size: tuple[int, int] = (640, 480)) -> Image.Image:
+    """Sharp-edged blocks: enough corners for ORB, unlike the smooth photo()."""
+    rng = np.random.default_rng(seed)
+    small = rng.integers(0, 256, (24, 32, 3), dtype=np.uint8)
+    return Image.fromarray(small).resize(size, Image.Resampling.NEAREST)
+
+
 def letterbox(image: Image.Image) -> Image.Image:
     canvas = Image.new("RGB", (image.width, image.width * 16 // 9), "black")
     canvas.paste(image, (0, (canvas.height - image.height) // 2))

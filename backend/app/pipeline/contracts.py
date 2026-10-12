@@ -54,6 +54,8 @@ class ArchiveHit(Contract):
     frame_index: Annotated[int, Field(ge=0)]
     phash_distance: Annotated[int | None, Field(ge=0, le=64)] = None
     cosine: Annotated[float | None, Field(ge=-1.0, le=1.0)] = None
+    # ORB keypoint matches that agree on one geometric transform between the frames.
+    inliers: Annotated[int | None, Field(ge=0)] = None
     archive_label: ArchiveLabel
     original_context: NonEmptyStr
     original_date: date | None = None
