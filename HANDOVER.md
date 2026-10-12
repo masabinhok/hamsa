@@ -57,13 +57,13 @@ State of Hamsa as of 2026-10-11. Read with `README.md`, `CLAUDE.md`, `docs/archi
 
 ## Next steps, in order
 
-1. **More eval rows**, so the held-out split (h041 onward, 4 rows now) reaches at least 10. Still missed by media match: h005/h006 (the "original" is a different shot) and h007 (news template).
-2. **Side-by-side view of the post and the archive original in the desk.** Needs the archive media path in the payload and an authed endpoint to serve it.
-3. **Reverse-search help in the desk.** Lens, Yandex and TinEye cannot fetch frames behind the desk login, so: copy frame, then open the search page.
-4. **Public submit and verdict page.**
-5. **Duplicate detection** (architecture section 3.4); the router already handles `Duplicate`.
-6. **Blurred-letterbox matching**, once eval shows how often it bites.
-7. **Demo video, README eval numbers from the test split, and the final AI disclosure check.**
+Built since 2026-10-11: ORB media verification (ADR 0009), the desk's side-by-side archive view and copy-frame reverse search, the public submit page (`/`) and report page (`/check/{id}`), the Nepali rationale check (gpt-oss-20b), and duplicate merging (identical file, or same claim and place).
+
+1. **More eval rows** (owner), so the held-out split (h041 onward, 4 rows now) reaches at least 10.
+2. **Full fresh eval run** (`uv run python -m app.eval.score --fresh`), now that verdicts carry the Nepali check, then held-out numbers in the README.
+3. **Demo video**, then the final AI disclosure check and a release merge to `main`.
+
+Known misses: h005/h006 (the "original" is a different shot), h007 (news template). The local `data/hamsa.db` holds test cases from end-to-end checks; delete it for a clean demo.
 
 ## Known limits and gotchas
 
