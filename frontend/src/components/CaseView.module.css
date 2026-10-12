@@ -134,6 +134,28 @@
   border-radius: 4px;
 }
 
+.frameSearch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: 0.875rem;
+}
+
+.frameSearch button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.frameSearch [role="status"] {
+  flex-basis: 100%;
+}
+
 .mediaPlaceholder {
   aspect-ratio: 16 / 9;
   background: var(--milk-deep);
