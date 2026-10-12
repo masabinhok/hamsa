@@ -1,0 +1,152 @@
+.page {
+  display: grid;
+  gap: var(--space-6);
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+
+.header {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.brand {
+  font-family: var(--font-read);
+  font-weight: 600;
+  font-size: var(--step-1);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.title {
+  font-family: var(--font-read);
+  font-size: var(--step-3);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.lede {
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-weight: 500;
+}
+
+.field textarea,
+.field input {
+  font: inherit;
+  font-weight: 400;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: white;
+  color: var(--ink);
+}
+
+.submit {
+  justify-self: start;
+  padding: var(--space-2) var(--space-5);
+  border: 0;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--milk);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.error {
+  color: var(--false);
+  margin: 0;
+}
+
+.heading {
+  font-size: var(--step-0);
+  font-weight: 600;
+  margin: 0;
+}
+
+.recent {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.label {
+  font-weight: 600;
+  margin: 0;
+}
+
+.label[data-label="false"] {
+  color: var(--false);
+}
+
+.label[data-label="misleading"] {
+  color: var(--misleading);
+}
+
+.label[data-label="true"] {
+  color: var(--true);
+}
+
+.label[data-label="unverifiable"] {
+  color: var(--unverifiable);
+}
+
+.waiting {
+  font-size: var(--step-1);
+  margin: 0;
+}
+
+.verdict {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.verdict .label {
+  font-size: var(--step-2);
+}
+
+.rationale {
+  font-family: var(--font-read);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.quiet {
+  color: var(--silt);
+  font-size: var(--step--1);
+  margin: 0;
+}
