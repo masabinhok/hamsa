@@ -11,9 +11,11 @@ import argparse
 import json
 import statistics
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +26,10 @@ from app.eval.dataset import EvalItem, MediaKind, Tactic, Verdict, load_items
 from app.pipeline.__main__ import build_pipeline
 from app.pipeline.contracts import Route, RouteDecision, SourceKind, VerdictLabel
 from app.pipeline.retrieve import EvidenceStore
-from app.pipeline.run import run
+from app.pipeline.run import Result, run
 from app.router.route import DEFAULT_THRESHOLDS, StageOutputs, Thresholds, recycled_hits, route
 from app.store.cases import outputs_from_json, outputs_to_json
+from app.worker import BACKOFF
 
 EVAL_DIR = REPO_ROOT / "data" / "eval"
 RUNS_DIR = EVAL_DIR / "runs"
@@ -127,6 +130,21 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
     return lines
 
 
+def with_retries(
+    attempt: Callable[[], Result], sleep: Callable[[float], None] = time.sleep
+) -> Result:
+    """Retry transient failures (a dropped Ollama connection, a rate limit) with the
+    worker's backoff, so the eval scores the pipeline as deployed, not one unlucky try."""
+    result = attempt()
+    for delay in BACKOFF:
+        if not any(f.transient for f in result.outputs.failures):
+            break
+        print(f"  transient failure, retrying in {delay}", flush=True)
+        sleep(delay.total_seconds())
+        result = attempt()
+    return result
+
+
 def _load(path: Path, item: EvalItem) -> Scored:
     data = json.loads(path.read_text(encoding="utf-8"))
     outputs = replace(outputs_from_json(data["outputs"]), seen_on=item.posted_on)
@@ -158,7 +176,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     store = WithoutFactChecks(QdrantClient(url=str(settings.qdrant_url)))
                     pipeline = replace(pipeline, evidence=store)
             media = [EVAL_DIR / "media" / item.media_file] if item.media_file else []
-            result = run(pipeline, item.claim_text, media, seen_on=item.posted_on)
+            result = with_retries(
+                partial(run, pipeline, item.claim_text, media, seen_on=item.posted_on)
+            )
             payload = {
                 "outputs": outputs_to_json(result.outputs),
                 "seconds": round(sum(result.seconds.values()), 2),
