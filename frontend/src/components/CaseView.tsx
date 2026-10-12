@@ -119,6 +119,7 @@ export function CaseView({ id }: { id: string }) {
                     key={name}
                     path={`/desk/cases/${current.id}/media/${encodeURIComponent(name)}`}
                     alt="Submitted media"
+                    searchable
                     // Match timestamps index the post's frames; only unambiguous for one file.
                     start={current.media.length === 1 ? strong[0]?.post_seconds : null}
                   />
