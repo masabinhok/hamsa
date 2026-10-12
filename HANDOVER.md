@@ -39,6 +39,8 @@ State of Hamsa as of 2026-10-11. Read with `README.md`, `CLAUDE.md`, `docs/archi
 
 ## Measured so far
 
+- **Eval tuning split (29 items, h001-h040), 2026-10-12, with ORB matching and the extraction fixes:** fast-track precision 9/9, recycled media precision 6/6 and recall 6/9, refuted-or-not agreement 24/29, exact verdict agreement 14/29, 20/29 sent to a human, latency p50 35 s and p95 72 s. No unsafe routes. Reports in `data/eval/runs/default/`.
+
 - **Real Rasuwa viral post:** extract, match, retrieve, verdict, then `fast_track` ("prior fact-check agrees: Nepal Factcheck"). The verdict was `false` 0.92 and named the Alaska origin. About 17.5 s warm.
 - **Invented Melamchi claim:** `unverifiable`, sent to `human_review`.
 - **Media robustness:** 17 of 20 edited reposts matched, with 0 false matches on 5 same-river hard negatives. Blurred-background letterboxes are missed.
@@ -55,7 +57,7 @@ State of Hamsa as of 2026-10-11. Read with `README.md`, `CLAUDE.md`, `docs/archi
 
 ## Next steps, in order
 
-1. **First scorer run** on the tuning split, then tune `Thresholds`. The archive build already shows unrelated clips matching at pHash 16, the strong-match limit, so expect to tighten it or skip flat frames.
+1. **More eval rows**, so the held-out split (h041 onward, 4 rows now) reaches at least 10. Still missed by media match: h005/h006 (the "original" is a different shot) and h007 (news template).
 2. **Side-by-side view of the post and the archive original in the desk.** Needs the archive media path in the payload and an authed endpoint to serve it.
 3. **Reverse-search help in the desk.** Lens, Yandex and TinEye cannot fetch frames behind the desk login, so: copy frame, then open the search page.
 4. **Public submit and verdict page.**
