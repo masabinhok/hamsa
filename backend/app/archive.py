@@ -12,6 +12,7 @@ Sources:
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import shutil
@@ -29,11 +30,12 @@ from qdrant_client import QdrantClient
 from app.config import REPO_ROOT, get_settings
 from app.eval.dataset import Tactic, load_items
 from app.ingest.download import YTDLP as DOWNLOAD_COMMAND
-from app.ingest.frames import frames_of
+from app.ingest.frames import Frame, frames_of
 from app.pipeline.contracts import ArchiveLabel
 from app.pipeline.media_match import (
     ArchiveEntry,
     ArchiveIndex,
+    Embed,
     SiglipEmbedder,
     canonical,
     hamming,
@@ -74,7 +76,7 @@ def collect_entries() -> list[tuple[ArchiveEntry, Path]]:
                 original_context=row.original_context,
                 original_date=row.original_date,
                 source_url=str(row.source_url),
-                media=f"archive/media/{row.media_file}",
+                media=_shown(row.media_file),
             )
             entries.append((entry, ARCHIVE_DIR / "media" / row.media_file))
 
@@ -100,8 +102,90 @@ def collect_entries() -> list[tuple[ArchiveEntry, Path]]:
     return entries
 
 
+LEARNED_DIR = "learned"
+
+
+def keep_keyframes(
+    archive_id: str,
+    frames: Sequence[Frame],
+    label: ArchiveLabel,
+    context: str,
+    original_date: date | None,
+    source_url: str,
+    index: ArchiveIndex,
+    embed: Embed,
+) -> ManifestRow:
+    """Archive footage as keyframes and a link, not the video (ADR 0011), indexed at once."""
+    row = ManifestRow(
+        archive_id=archive_id,
+        media_file=f"{LEARNED_DIR}/{archive_id}",
+        label=label,
+        original_context=context,
+        original_date=original_date,
+        source_url=HttpUrl(source_url),
+    )
+    if any(r.archive_id == archive_id for r in manifest_rows()):
+        raise ValueError(f"archive id {archive_id} is already in the archive")
+    folder = ARCHIVE_DIR / "media" / row.media_file
+    folder.mkdir(parents=True, exist_ok=True)
+    for frame in frames:
+        frame.image.convert("RGB").save(folder / f"frame-{frame.index}.jpg", quality=85)
+    append_row(row)
+    entry = ArchiveEntry(
+        archive_id=archive_id,
+        label=label,
+        original_context=context,
+        original_date=original_date,
+        source_url=source_url,
+        media=_shown(row.media_file),
+    )
+    index.add(entry, frames, embed)
+    return row
+
+
+def eval_media_hashes() -> set[str]:
+    """sha256 of every eval post file: a test case made from one must not teach the archive."""
+    media = EVAL_DIR / "media"
+    if not media.is_dir():
+        return set()
+    return {
+        hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in media.iterdir()
+        if p.is_file() and "_orig" not in p.stem
+    }
+
+
+def _shown(media_file: str) -> str:
+    """What the desk shows: the file, or for footage found online (a folder of keyframes,
+    ADR 0011) its first keyframe."""
+    if (ARCHIVE_DIR / "media" / media_file).is_dir():
+        return f"archive/media/{media_file}/frame-0.jpg"
+    return f"archive/media/{media_file}"
+
+
 def _same_url(a: str, b: str) -> bool:
     return a.rstrip("/") == b.rstrip("/")
+
+
+def eval_post_urls() -> list[str]:
+    """Posts in the eval set, verified or drafted: they must never enter the archive."""
+    urls = [str(i.post_url) for i in load_items(EVAL_DIR / "items.csv") if i.post_url]
+    drafts = EVAL_DIR / "drafts.csv"  # the owner's unverified rows, gitignored
+    if drafts.is_file():
+        with drafts.open(newline="", encoding="utf-8") as handle:
+            urls += [r["post_url"] for r in csv.DictReader(handle) if r.get("post_url")]
+    return urls
+
+
+def manifest_rows() -> list[ManifestRow]:
+    with (ARCHIVE_DIR / "manifest.csv").open(newline="", encoding="utf-8") as handle:
+        return [ManifestRow.model_validate(raw) for raw in csv.DictReader(handle)]
+
+
+def append_row(row: ManifestRow) -> None:
+    with (ARCHIVE_DIR / "manifest.csv").open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(ManifestRow.model_fields))
+        writer.writerow(row.model_dump(mode="json"))
 
 
 def add(
@@ -113,14 +197,8 @@ def add(
 ) -> ManifestRow:
     """Download one clip and append it to the manifest. The upload date stands in for the
     footage date unless one is given; it is an upper bound, since outlets reuse footage."""
-    eval_posts = [str(i.post_url) for i in load_items(EVAL_DIR / "items.csv") if i.post_url]
-    drafts = EVAL_DIR / "drafts.csv"  # the owner's unverified rows, gitignored
-    if drafts.is_file():
-        with drafts.open(newline="", encoding="utf-8") as handle:
-            eval_posts += [r["post_url"] for r in csv.DictReader(handle) if r.get("post_url")]
-    manifest = ARCHIVE_DIR / "manifest.csv"
-    with manifest.open(newline="", encoding="utf-8") as handle:
-        rows = [ManifestRow.model_validate(raw) for raw in csv.DictReader(handle)]
+    eval_posts = eval_post_urls()
+    rows = manifest_rows()
 
     def refuse_known(candidate: str) -> None:
         # A post that matches itself proves nothing (docs/data-collection.md).
@@ -158,9 +236,7 @@ def add(
         (ARCHIVE_DIR / "media").mkdir(exist_ok=True)
         shutil.move(clip, ARCHIVE_DIR / "media" / row.media_file)
 
-    with manifest.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(ManifestRow.model_fields))
-        writer.writerow(row.model_dump(mode="json"))
+    append_row(row)
     return row
 
 
@@ -193,7 +269,7 @@ def build() -> int:
     problems: list[str] = []
     manifest_hashes: dict[str, list[list[float]]] = {}
     for entry, path in entries:
-        if not path.is_file():
+        if not path.exists():
             problems.append(f"{entry.archive_id}: missing {path.relative_to(REPO_ROOT)}")
             continue
         try:

@@ -14,5 +14,6 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0008](0008-qdrant-vector-store.md) | Qdrant as the vector store | Accepted |
 | [0009](0009-orb-geometric-verification.md) | ORB keypoints verify media matches geometrically | Accepted |
 | [0010](0010-fetch-links-with-the-operators-browser-session.md) | Fetch pasted links with the operator's browser session | Accepted |
+| [0011](0011-archive-learns-from-verdicts.md) | The archive learns from verdicts, not from bulk downloads or web search | Accepted |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.

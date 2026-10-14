@@ -13,10 +13,19 @@ from datetime import timedelta
 from functools import partial
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.api.main import sniff_suffix
 from app.config import get_settings
 from app.ingest.download import Downloaded, download
-from app.pipeline.contracts import Duplicate, DuplicateBasis, Route, RouteDecision
+from app.learn import Verdicted, teach
+from app.pipeline.contracts import (
+    Duplicate,
+    DuplicateBasis,
+    Route,
+    RouteDecision,
+    VerdictLabel,
+)
 from app.pipeline.run import Result
 from app.router.route import StageOutputs, route
 from app.store.cases import (
@@ -29,7 +38,7 @@ from app.store.cases import (
     requeue_job,
     save_media,
 )
-from app.store.models import Case, Job, Media
+from app.store.models import Case, Job, Lesson, Media, utcnow
 
 MAX_ATTEMPTS = 3
 MAX_CAPTION_CHARS = 5000  # the same limit as submitted text (MAX_TEXT_CHARS in the API)
@@ -38,6 +47,7 @@ POLL_S = 1.0
 
 Runner = Callable[[str | None, Sequence[Path]], Result]
 Fetch = Callable[[str, Path], Downloaded]
+Teach = Callable[[Verdicted], list[str]]
 log = logging.getLogger("hamsa.worker")
 
 
@@ -122,6 +132,42 @@ def process_next(
     return case_id
 
 
+def learn_next(db: Database, media_root: Path, site_url: str, teach: Teach) -> bool:
+    """Teach the archive from the oldest pending published verdict. False if none waits."""
+    with db.session() as session:
+        lesson = session.scalars(
+            select(Lesson)
+            .where(Lesson.done_at.is_(None), Lesson.error.is_(None))
+            .order_by(Lesson.id)
+            .limit(1)
+        ).first()
+        if lesson is None:
+            return False
+        case = session.get_one(Case, lesson.case_id)
+        verdicted = Verdicted(
+            case_id=case.id,
+            label=VerdictLabel(case.final_label),
+            rationale_en=case.final_rationale_en or "",
+            reported_on=case.created_at.date(),
+            media=[media_root / case.id / m.filename for m in case.media],
+            page_url=case.source_url or f"{site_url}/check/{case.id}",
+            original_url=lesson.original_url,
+        )
+        lesson_id = lesson.id
+
+    error = None
+    try:
+        added = teach(verdicted)
+        log.info("case %s taught the archive: %s", verdicted.case_id, added or "nothing new")
+    except Exception as failure:  # one bad lesson (a dead link) must not stop the worker
+        log.exception("case %s: lesson failed", verdicted.case_id)
+        error = f"{type(failure).__name__}: {failure}"[:500]
+    with db.session.begin() as session:
+        done = session.get_one(Lesson, lesson_id)
+        done.done_at, done.error = (utcnow(), None) if error is None else (None, error)
+    return True
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     settings = get_settings()
@@ -133,6 +179,10 @@ def main() -> int:
     from app.pipeline.run import run
 
     pipeline = build_pipeline(settings)
+    fetch = partial(download, browser=settings.fetch_browser)
+
+    def lesson(verdicted: Verdicted) -> list[str]:
+        return teach(verdicted, pipeline.archive, pipeline.embed_image, fetch)
 
     def runner(text: str | None, media: Sequence[Path]) -> Result:
         # The case being run is PROCESSING, so the routed cases never include itself.
@@ -143,8 +193,8 @@ def main() -> int:
     log.info("worker ready")
     try:
         while True:
-            fetch = partial(download, browser=settings.fetch_browser)
-            if process_next(db, runner, settings.media_root, fetch) is None:
+            idle = process_next(db, runner, settings.media_root, fetch) is None
+            if idle and not learn_next(db, settings.media_root, settings.frontend_origin, lesson):
                 time.sleep(POLL_S)
     except KeyboardInterrupt:
         return 0

@@ -32,6 +32,7 @@ from app.store.models import (
     Channel,
     Job,
     JobState,
+    Lesson,
     Media,
     UTCDateTime,
     utcnow,
@@ -179,12 +180,15 @@ def publish(
     rationale_en: str,
     rationale_ne: str,
     note: str | None,
+    original_url: str | None = None,
 ) -> None:
     if case.status is not CaseStatus.ROUTED:
         raise DecisionError(f"case is {case.status}, only routed cases can be published")
     case.final_label = label.value
     case.final_rationale_en, case.final_rationale_ne = rationale_en, rationale_ne
     _event(session, case, checker, case.status, CaseStatus.PUBLISHED, note)
+    # Every verdict teaches the archive, so the next repost is matched without a checker.
+    session.add(Lesson(case_id=case.id, original_url=original_url))
 
 
 def reject(session: Session, case: Case, checker: str, note: str) -> None:
