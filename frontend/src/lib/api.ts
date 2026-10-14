@@ -132,6 +132,7 @@ export interface PublicCase {
   id: string;
   status: CaseStatus;
   verdict: PublishedVerdict | null;
+  needs_media: boolean;
 }
 
 // The public side: anyone can submit a post and follow its verdict, no sign-in.

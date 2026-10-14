@@ -13,5 +13,6 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0007](0007-gpu-for-vision-model-only.md) | GPU reserved for the vision model; embedders on CPU | Accepted |
 | [0008](0008-qdrant-vector-store.md) | Qdrant as the vector store | Accepted |
 | [0009](0009-orb-geometric-verification.md) | ORB keypoints verify media matches geometrically | Accepted |
+| [0010](0010-fetch-links-with-the-operators-browser-session.md) | Fetch pasted links with the operator's browser session | Accepted |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.
