@@ -66,6 +66,13 @@ export default function Check() {
           {waiting[current.status]}
         </p>
       )}
+      {current?.needs_media && !verdict && (
+        <p className={styles.error}>
+          We could not open the link (the post may be private or deleted). Please{" "}
+          <Link href="/">send it again</Link> with the photo or video attached, so the checkers can
+          see it.
+        </p>
+      )}
 
       {verdict && (
         <article className={styles.verdict}>

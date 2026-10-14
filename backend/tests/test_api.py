@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from app.api.main import RateLimiter, create_app, sniff_suffix
 from app.store.cases import Database
+from app.store.models import Case
 from tests.factories import cite, hit, outputs, passage, verdict
 from tests.images import photo
 from tests.stored import add_routed_case, database, routed_result
@@ -67,6 +68,7 @@ def test_submit_text_and_image(client: TestClient, tmp_path: Path) -> None:
         "id": case_id,
         "status": "received",
         "verdict": None,
+        "needs_media": False,
     }
 
 
@@ -101,7 +103,7 @@ def test_unknown_case_is_404(client: TestClient) -> None:
 def test_public_view_never_shows_the_model_draft(client: TestClient, db: Database) -> None:
     add_routed_case(db, "c1")
     body = client.get("/cases/c1").json()
-    assert body == {"id": "c1", "status": "routed", "verdict": None}
+    assert body == {"id": "c1", "status": "routed", "verdict": None, "needs_media": False}
 
 
 # desk
@@ -220,3 +222,14 @@ def test_archive_original_is_served_only_for_a_match_inside_data(
     assert client.get("/desk/cases/c1/archive/escape", headers=AUTH).status_code == 404
     assert client.get("/desk/cases/c1/archive/unknown", headers=AUTH).status_code == 404
     assert client.get("/desk/cases/c1/archive/kullu").status_code == 401
+
+
+def test_public_case_asks_for_the_file_when_the_link_failed(
+    client: TestClient, db: Database
+) -> None:
+    case_id = client.post("/cases", data={"url": "https://www.facebook.com/reel/1"}).json()["id"]
+    assert client.get(f"/cases/{case_id}").json()["needs_media"] is False  # not tried yet
+    add_routed_case(db, "c9")
+    with db.session.begin() as session:
+        session.get_one(Case, "c9").source_url = "https://www.facebook.com/reel/1"
+    assert client.get("/cases/c9").json()["needs_media"] is True

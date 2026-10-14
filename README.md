@@ -108,7 +108,7 @@ cd ../frontend && npm install && npm run dev              # checker desk on :300
 
 The desk asks for your name and the `DESK_TOKEN`. It talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` is set in `frontend/.env.local`.
 
-Submit with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer $DESK_TOKEN`. Interactive API docs: `localhost:8000/docs`.
+Submit a link with `curl -F "url=https://www.facebook.com/reel/..." localhost:8000/cases`: the worker downloads the post and its caption with the browser login named in `FETCH_BROWSER` (ADR 0010). Or submit files with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer $DESK_TOKEN`. Interactive API docs: `localhost:8000/docs`.
 
 ## Evaluation
 
