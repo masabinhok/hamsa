@@ -16,6 +16,7 @@ from app.pipeline.retrieve import (
     MAX_PER_SOURCE,
     EvidenceStore,
     chunk,
+    news_since,
     passage_id,
     queries_for,
     retrieve,
@@ -184,3 +185,10 @@ def test_passages_carry_their_headline(store: EvidenceStore) -> None:
     store.add([article("debunk", "flood video is from Alaska", "2026-08-28T09:00:00")], fake_embed)
     [found] = retrieve(claim(claim_en="flood video"), store, fake_embed, since=INCIDENT).passages
     assert found.title == "debunk"
+
+
+def test_news_window_follows_the_claim_not_a_fixed_event() -> None:
+    today = date(2026, 10, 14)
+    assert news_since(claim(), today) == date(2026, 9, 14)
+    dated = claim(claimed_date="2024-09-28")  # a post about the 2024 Kathmandu flood
+    assert news_since(dated, today) == date(2024, 8, 29)

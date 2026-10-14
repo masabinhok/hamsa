@@ -1,4 +1,3 @@
-from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,10 +30,6 @@ class Settings(BaseSettings):
     # Shared secret for the checker desk; the desk API is disabled while unset.
     desk_token: SecretStr | None = None
     frontend_origin: str = "http://localhost:3000"
-
-    # The disaster this deployment covers. News before this date cannot describe it;
-    # fact-checks of any date still count (architecture 3.5).
-    incident_start: date = date(2026, 8, 26)
 
 
 @lru_cache
