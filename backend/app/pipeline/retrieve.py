@@ -73,6 +73,14 @@ class EvidenceStore:
     def recreate(self) -> None:
         if self._client.collection_exists(self._collection):
             self._client.delete_collection(self._collection)
+        self._create()
+
+    def ensure(self) -> None:
+        """Create the collection unless it exists; `corpus watch` adds to it in place."""
+        if not self._client.collection_exists(self._collection):
+            self._create()
+
+    def _create(self) -> None:
         self._client.create_collection(
             self._collection,
             vectors_config=models.VectorParams(size=EMBEDDING_DIM, distance=models.Distance.COSINE),
