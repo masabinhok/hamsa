@@ -1,0 +1,9 @@
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+data
+graphify-out
+.git
+.env
+frontend/tsconfig.tsbuildinfo

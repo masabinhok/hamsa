@@ -85,6 +85,8 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 
 ## Running locally
 
+**Setting Hamsa up for a fact-checking desk?** Follow [docs/install.md](docs/install.md): Ollama on the host, then `docker compose up -d --build` starts the API, worker, corpus watcher, website and vector store. The steps below are for developing Hamsa itself.
+
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](https://ollama.com), an NVIDIA GPU with 8 GB VRAM (recommended), and a free [Groq](https://console.groq.com) API key (optional: without it, verdicts run on the local model).
 
 ```bash
