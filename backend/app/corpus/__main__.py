@@ -82,7 +82,7 @@ def main() -> int:
     fetch_cmd.add_argument(
         "--since",
         type=date.fromisoformat,
-        default=get_settings().incident_start - timedelta(days=6),
+        default=date.today() - timedelta(days=30),
     )
     commands.add_parser("index")
     args = parser.parse_args()

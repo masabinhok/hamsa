@@ -157,7 +157,7 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built by `uv ru
 - **Chunking:** paragraphs packed into chunks of at most 1,200 characters, splitting long paragraphs at sentence ends (`।` and `.`). The article title is prepended to each chunk before embedding.
 - **Indexing** is an offline batch job on the GPU, with 4 concurrent requests: about 19 passages/s, so roughly 14 minutes for the full corpus. The CPU would take about 2 hours at 2.2 passages/s. CPU and GPU embeddings are identical (cosine 1.0), so per-case queries run on the CPU against a GPU-built index.
 - **Queries:** three queries, merged with reciprocal rank fusion (k = 60): the original-language claim, the English claim, and the on-screen text. On-screen text often names the true origin, such as "Columbia Glacier".
-- **Recency:** news counts only from the incident start (`INCIDENT_START`). Fact-checks of any date count.
+- **Recency:** news counts from 30 days before the date the claim is about (its stated date, else the day the post was seen), with no end date, since reports follow an event. Fact-checks of any date count. No deployment is tied to one disaster (`news_since` in `backend/app/pipeline/retrieve.py`).
 - **Diversity:** at most 2 passages per article and 8 in total, so the verdict sees independent sources.
 - **Prior fact-checks:** fact-checker passages have `source_kind = fact_check`. A prior fact-check of the same claim is the strongest single evidence signal.
 

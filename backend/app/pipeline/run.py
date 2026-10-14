@@ -26,7 +26,7 @@ from app.pipeline.contracts import (
 )
 from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
-from app.pipeline.retrieve import EmbedText, EvidenceStore, retrieve
+from app.pipeline.retrieve import EmbedText, EvidenceStore, news_since, retrieve
 from app.pipeline.verdict import Reasoner, judge
 from app.router.route import StageOutputs, route
 
@@ -41,7 +41,6 @@ class Pipeline:
     evidence: EvidenceStore
     embed_text: EmbedText
     reasoners: Sequence[tuple[Reasoner, str]]
-    incident_start: date
     nepali_checker: tuple[Reasoner, str] | None = None
 
 
@@ -125,7 +124,12 @@ def run(
     )
     evidence: Evidence | None = stage(
         Stage.RETRIEVE,
-        lambda: retrieve(claim, pipeline.evidence, pipeline.embed_text, pipeline.incident_start),
+        lambda: retrieve(
+            claim,
+            pipeline.evidence,
+            pipeline.embed_text,
+            news_since(claim, seen_on or date.today()),
+        ),
     )
     if matched is None or evidence is None:
         return finish(claim=claim, media_match=matched, evidence=evidence)
