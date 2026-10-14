@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import SecretStr
+from sqlalchemy import select
 
 from app.api.main import RateLimiter, create_app, sniff_suffix
 from app.store.cases import Database
@@ -253,3 +254,50 @@ def test_publishing_records_the_original_for_the_archive(client: TestClient, db:
     with db.session() as session:
         [lesson] = session.scalars(select(Lesson)).all()
         assert lesson.original_url == "https://www.instagram.com/reel/abc/"
+
+
+def test_a_checker_signs_in_with_their_own_code_and_is_named_by_it(
+    client: TestClient, db: Database
+) -> None:
+    from app.checkers import add
+
+    with db.session.begin() as session:
+        code = add(session, "Sita Sharma")
+    mine = {"Authorization": f"Bearer {code}"}
+    assert client.get("/desk/me", headers=mine).json() == {"name": "Sita Sharma"}
+    assert client.get("/desk/me", headers=AUTH).json() == {"name": None}
+
+    add_routed_case(db, "c1")
+    # The body cannot put someone else's name on the decision.
+    body = {"action": "reject", "checker": "someone else", "note": "an opinion"}
+    assert client.post("/desk/cases/c1/decision", headers=mine, json=body).status_code == 200
+    events = client.get("/desk/cases/c1", headers=mine).json()["events"]
+    assert events[-1]["actor"] == "Sita Sharma"
+
+
+def test_a_removed_checker_cannot_sign_in(client: TestClient, db: Database) -> None:
+    from app.checkers import add
+    from app.store.models import Checker
+
+    with db.session.begin() as session:
+        code = add(session, "Ram")
+    with db.session.begin() as session:
+        session.scalars(select(Checker)).one().active = False
+    assert client.get("/desk/me", headers={"Authorization": f"Bearer {code}"}).status_code == 401
+
+
+def test_the_operator_token_must_say_who_decided(client: TestClient, db: Database) -> None:
+    add_routed_case(db, "c1")
+    response = client.post("/desk/cases/c1/decision", headers=AUTH, json={"action": "reject"})
+    assert response.status_code == 422
+
+
+def test_desk_works_with_checker_accounts_alone(db: Database, tmp_path: Path) -> None:
+    from app.checkers import add
+
+    app = create_app(db, tmp_path / "media", None, "http://localhost:3000", tmp_path / "data")
+    assert TestClient(app).get("/desk/queue").status_code == 503  # nobody can sign in yet
+    with db.session.begin() as session:
+        code = add(session, "Sita")
+    response = TestClient(app).get("/desk/queue", headers={"Authorization": f"Bearer {code}"})
+    assert response.status_code == 200

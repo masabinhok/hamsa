@@ -75,7 +75,8 @@ class Action(StrEnum):
 
 class DecisionRequest(BaseModel):
     action: Action
-    checker: str
+    # Ignored when a checker signs in with their own code; the server knows their name.
+    checker: str | None = None
     # For publish: omitted fields fall back to the model's draft.
     label: VerdictLabel | None = None
     rationale_en: str | None = None

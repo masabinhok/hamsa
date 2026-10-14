@@ -30,7 +30,7 @@ State of Hamsa as of 2026-10-11. Read with `README.md`, `CLAUDE.md`, `docs/archi
 | Media archive build and collector | `backend/app/archive.py` | `uv run python -m app.archive`; add a clip with `... add <url> --label verified_genuine --context "..."` |
 | Eval dataset schema and validator | `backend/app/eval/dataset.py` | `uv run python -m app.eval.validate` |
 | Eval scorer | `backend/app/eval/score.py` | `uv run python -m app.eval.score [--split tune\|test] [--no-fact-checks]`; results cached in `data/eval/runs/` |
-| Checker desk UI (Next.js 16) | `frontend/src/` | `npm run dev`, then sign in with your name and `DESK_TOKEN` |
+| Checker desk UI (Next.js 16) | `frontend/src/` | `npm run dev`; add checkers with `uv run python -m app.checkers add NAME`, then sign in with the printed code |
 
 - Setup steps are in the README under "Running locally". Run the backend commands from `backend/`.
 - Qdrant runs in Docker (`docker compose up -d`). The evidence corpus is indexed: 5,626 articles, 15,806 passages (fetched 2026-10-11).

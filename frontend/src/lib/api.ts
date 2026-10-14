@@ -152,6 +152,8 @@ export const site = {
 };
 
 export const desk = {
+  // Whose access code this is; null for the operator token, which names nobody.
+  me: (token: string) => call<{ name: string | null }>(token, "/desk/me"),
   queue: (token: string) => call<DeskSummary[]>(token, "/desk/queue"),
   case: (token: string, id: string) => call<DeskCase>(token, `/desk/cases/${id}`),
   decide: (token: string, id: string, decision: Decision) =>
