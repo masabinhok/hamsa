@@ -105,3 +105,10 @@ def test_a_failed_generation_is_sampled_again() -> None:
     assert draft.label == "false"
     assert len(fake.bodies) == 2
     assert waits == []
+
+
+def test_reasoning_effort_is_set_per_client() -> None:
+    fake = FakeGroq(ok())
+    http = httpx.Client(base_url="https://groq.test", transport=httpx.MockTransport(fake))
+    GroqClient("key", http=http, reasoning_effort="low").structured("m", Answer, "s", "p")
+    assert fake.bodies[0]["reasoning_effort"] == "low"
