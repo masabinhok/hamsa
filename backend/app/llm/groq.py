@@ -31,6 +31,7 @@ class GroqClient:
         api_key: str,
         http: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        reasoning_effort: str = "medium",
     ) -> None:
         self._http = http or httpx.Client(
             base_url=BASE_URL,
@@ -38,6 +39,7 @@ class GroqClient:
             headers={"Authorization": f"Bearer {api_key}"},
         )
         self._sleep = sleep
+        self._reasoning_effort = reasoning_effort
 
     def structured[T: BaseModel](
         self,
@@ -47,7 +49,6 @@ class GroqClient:
         prompt: str,
         schema: dict[str, Any] | None = None,
         check: Check | None = None,
-        reasoning_effort: str = "medium",
     ) -> T:
         messages: Messages = [
             {"role": "system", "content": system},
@@ -56,7 +57,7 @@ class GroqClient:
         body: dict[str, Any] = {
             "model": model,
             "temperature": 0,
-            "reasoning_effort": reasoning_effort,
+            "reasoning_effort": self._reasoning_effort,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
