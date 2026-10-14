@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, site, type PublicCase } from "@/lib/api";
+import { Both } from "@/components/Both";
 import { labelName } from "@/lib/words";
 import styles from "./site.module.css";
 
@@ -14,7 +15,7 @@ const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
 export default function Home() {
   const router = useRouter();
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<[string, string] | null>(null);
   const [recent, setRecent] = useState<PublicCase[]>([]);
 
   useEffect(() => {
@@ -29,69 +30,81 @@ export default function Home() {
     files.forEach((file) => form.append("files", file));
     const hasLink = String(form.get("url") ?? "").trim() !== "";
     if (!String(form.get("text") ?? "").trim() && files.length === 0 && !hasLink) {
-      setError("Paste the post's link or text, or attach its photo or video.");
+      setError([
+        "पोस्टको लिंक वा लेखिएको कुरा राख्नुहोस्, वा फोटो/भिडियो जोड्नुहोस्।",
+        "Paste the post's link or text, or attach its photo or video.",
+      ]);
       return;
     }
     if (files.length > MAX_FILES) {
-      setError(`Attach at most ${MAX_FILES} files.`);
+      setError([
+        `बढीमा ${MAX_FILES.toLocaleString("ne-NP")} वटा फाइल जोड्नुहोस्।`,
+        `Attach at most ${MAX_FILES} files.`,
+      ]);
       return;
     }
     if (!String(form.get("url") ?? "").trim()) form.delete("url");
     setSending(true);
-    setError("");
+    setError(null);
     try {
       const { id } = await site.submit(form);
       router.push(`/check/${id}`);
     } catch (failure) {
       setError(
         failure instanceof ApiError && failure.status === 429
-          ? "Too many submissions from here. Please wait a minute."
-          : `Could not send it: ${failure instanceof Error ? failure.message : "unknown error"}.`,
+          ? ["यहाँबाट धेरै पठाइयो। एक मिनेट पर्खनुहोस्।", "Too many submissions from here. Please wait a minute."]
+          : [
+              "पठाउन सकिएन। फेरि प्रयास गर्नुहोस्।",
+              `Could not send it: ${failure instanceof Error ? failure.message : "unknown error"}.`,
+            ],
       );
       setSending(false);
     }
   }
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} lang="ne">
       <header className={styles.header}>
         <p className={styles.brand}>Hamsa</p>
-        <h1 className={styles.title} lang="ne">
-          बाढी, पहिरो वा भूकम्पबारे शंकास्पद पोस्ट देख्नुभयो?
-        </h1>
+        <h1 className={styles.title}>बाढी, पहिरो, भूकम्प वा अरू विपद्‌बारे शंकास्पद पोस्ट देख्नुभयो?</h1>
         <p className={styles.lede}>
-          Seen a doubtful post about a flood, landslide or earthquake in Nepal? Send it here.
-          Fact-checkers look at every post and publish what they find.
+          <Both
+            ne="यहाँ पठाउनुहोस्। तथ्य जाँचकर्ताहरूले हरेक पोस्ट हेर्छन् र आफूले भेटेको कुरा प्रकाशित गर्छन्।"
+            en="Seen a doubtful post about a disaster in Nepal? Send it here. Fact-checkers look at every post and publish what they find."
+          />
         </p>
       </header>
 
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.field}>
-          <span>The post&rsquo;s text</span>
-          <textarea name="text" rows={5} maxLength={5000} lang="ne" />
+          <Both ne="पोस्टको लिंक" en="Link to the post (Facebook, TikTok, YouTube, X)" />
+          <input name="url" type="url" inputMode="url" placeholder="https://" lang="en" />
         </label>
         <label className={styles.field}>
-          <span>Link to the post</span>
-          <input name="url" type="url" inputMode="url" placeholder="https://" />
+          <Both ne="पोस्टमा लेखिएको कुरा" en="The post's text" />
+          <textarea name="text" rows={5} maxLength={5000} />
         </label>
         <label className={styles.field}>
-          <span>Its photos or video (up to {MAX_FILES}, 100 MB each)</span>
+          <Both
+            ne={`फोटो वा भिडियो (बढीमा ${MAX_FILES.toLocaleString("ne-NP")} वटा, प्रत्येक १०० MB सम्म)`}
+            en={`Its photos or video (up to ${MAX_FILES}, 100 MB each)`}
+          />
           <input name="files" type="file" accept={ACCEPT} multiple />
         </label>
         {error && (
           <p className={styles.error} role="alert">
-            {error}
+            <Both ne={error[0]} en={error[1]} />
           </p>
         )}
         <button className={styles.submit} disabled={sending}>
-          {sending ? "Sending…" : "Send for checking"}
+          {sending ? "पठाउँदै… Sending…" : "जाँचका लागि पठाउनुहोस् · Send for checking"}
         </button>
       </form>
 
       {recent.length > 0 && (
         <section className={styles.recent} aria-labelledby="recent">
           <h2 id="recent" className={styles.heading}>
-            Recently checked
+            <Both ne="भर्खरै जाँचिएका" en="Recently checked" />
           </h2>
           <ul className={styles.list}>
             {recent.slice(0, 10).map((item) =>
@@ -99,9 +112,10 @@ export default function Home() {
                 <li key={item.id}>
                   <Link href={`/check/${item.id}`} className={styles.item}>
                     <span className={styles.label} data-label={item.verdict.label}>
-                      {labelName[item.verdict.label].en}
+                      {labelName[item.verdict.label].ne}{" "}
+                      <span lang="en">· {labelName[item.verdict.label].en}</span>
                     </span>
-                    <span lang="ne">{item.verdict.rationale_ne}</span>
+                    <span>{item.verdict.rationale_ne}</span>
                   </Link>
                 </li>
               ) : null,
