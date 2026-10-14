@@ -4,7 +4,7 @@ import hashlib
 import re
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from qdrant_client import QdrantClient, models
@@ -21,6 +21,9 @@ MAX_PER_ARTICLE = 2
 # crowded out other sources; independence is judged per publisher.
 MAX_PER_SOURCE = 3
 CANDIDATES_PER_QUERY = 20
+# News older than this before the claim is about an earlier event, e.g. 2024 Melamchi
+# reports for a 2026 Melamchi claim.
+NEWS_WINDOW = timedelta(days=30)
 RRF_K = 60  # standard reciprocal-rank-fusion constant
 VISIBLE_TEXT_CHARS = 500
 
@@ -139,6 +142,15 @@ def queries_for(claim: Claim) -> list[str]:
     if claim.visible_text:
         queries.append(" ".join(claim.visible_text)[:VISIBLE_TEXT_CHARS])
     return list(dict.fromkeys(queries))
+
+
+def news_since(claim: Claim, seen_on: date) -> date:
+    """Start of the news window: a month before the date the claim is about.
+
+    Any disaster, past or upcoming: no deployment is tied to one event. Reports about an
+    event appear after it, so the window has no end; fact-checks of any date always count.
+    """
+    return (claim.claimed_date or seen_on) - NEWS_WINDOW
 
 
 def retrieve(claim: Claim, store: EvidenceStore, embed: EmbedText, since: date) -> Evidence:
