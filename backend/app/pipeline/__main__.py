@@ -51,7 +51,6 @@ def build_pipeline(settings: Settings) -> Pipeline:
         evidence=EvidenceStore(qdrant),
         embed_text=embed_text,
         reasoners=reasoners,
-        incident_start=settings.incident_start,
         nepali_checker=checker,
     )
 
