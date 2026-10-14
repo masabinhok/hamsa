@@ -1,5 +1,25 @@
 name: hamsa
 
+# One command for the whole desk: docker compose up -d
+# Ollama runs on the host (it needs the GPU); see docs/install.md.
+
+x-backend: &backend
+  image: hamsa-backend  # one image for the api, worker and corpus watcher
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file: .env
+  # Host networking, so localhost reaches Ollama and Qdrant unchanged (Linux).
+  network_mode: host
+  volumes:
+    - ./data:/app/data
+    - huggingface:/root/.cache/huggingface
+    # The operator's browser login, read-only, for fetching pasted links (ADR 0010).
+    - ${HOME}/.mozilla:/root/.mozilla:ro
+  depends_on:
+    - qdrant
+  restart: unless-stopped
+
 services:
   qdrant:
     image: qdrant/qdrant:v1.19.2
@@ -8,3 +28,26 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
     restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: uvicorn --factory app.api.main:default_app --host 127.0.0.1 --port 8000
+
+  worker:
+    <<: *backend
+    command: python -m app.worker
+
+  corpus:
+    <<: *backend
+    command: python -m app.corpus watch
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+volumes:
+  huggingface:
