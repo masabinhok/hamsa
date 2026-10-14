@@ -147,12 +147,14 @@ A duplicate is merged under the existing case, which strengthens its virality si
 **In:** `Claim`.
 **Out:** `Evidence`, a list of up to 8 `Passage`s (`passage_id`, `source`, `source_kind`, `url`, `published_at`, `text`, `score`).
 
-Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built by `uv run python -m app.corpus fetch` and then `index`.
+Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `uv run python -m app.corpus fetch` and then `index`, and kept current by `uv run python -m app.corpus watch`, which every 15 minutes fetches recent articles from every source and indexes only the ones not seen before (`refresh` in `backend/app/corpus/__main__.py`).
 
-- **Sources:** WordPress REST APIs, which return clean full article text. Onlinekhabar (Nepali and English), Nepalnews, and Nepal Factcheck.
-  - News is fetched from a week before the incident, limited to disaster terms (बाढी, पहिरो, डुबान, हिमताल; flood, landslide, GLOF, inundation).
+- **Sources:**
+  - WordPress REST APIs, which return clean full article text: Onlinekhabar (Nepali and English), Nepalnews, and Nepal Factcheck.
+  - RSS feeds, which list only the latest items with a headline and lead: Techpana, Ratopati, and Setopati. Techpana items whose link contains "fact-check" are stored as fact-checks.
+  - News is limited to disaster terms of any kind: बाढी, पहिरो, डुबान, हिमताल, भूकम्प, डढेलो, आगलागी, चट्याङ; flood, landslide, GLOF, inundation, earthquake, avalanche, wildfire.
   - Fact-checks are fetched from all time, because recycled clips are often debunked years earlier.
-  - Other outlets either have no article API (RSS without history) or block automated access. They can be added the same way when they do.
+  - Other outlets block automated access or publish malformed feeds; any outlet with a WordPress API or an RSS feed is added with one line in `backend/app/corpus/fetch.py`.
 - **Corpus as of 2026-10-06:** 5,365 articles, 15,065 passages.
 - **Chunking:** paragraphs packed into chunks of at most 1,200 characters, splitting long paragraphs at sentence ends (`।` and `.`). The article title is prepended to each chunk before embedding.
 - **Indexing** is an offline batch job on the GPU, with 4 concurrent requests: about 19 passages/s, so roughly 14 minutes for the full corpus. The CPU would take about 2 hours at 2.2 passages/s. CPU and GPU embeddings are identical (cosine 1.0), so per-case queries run on the CPU against a GPU-built index.
