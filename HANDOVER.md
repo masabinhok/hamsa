@@ -57,13 +57,14 @@ State of Hamsa as of 2026-10-11. Read with `README.md`, `CLAUDE.md`, `docs/archi
 
 ## Next steps, in order
 
-Built since 2026-10-11: ORB media verification (ADR 0009), the desk's side-by-side archive view and copy-frame reverse search, the public submit page (`/`) and report page (`/check/{id}`), the Nepali rationale check (gpt-oss-20b), and duplicate merging (identical file, or same claim and place).
+Built by 2026-10-15 (all on `develop`, pushed): news window per claim instead of a fixed event; `corpus watch` with RSS sources; pasted links fetched with the operator's browser login (ADR 0010); the archive learning from every published verdict and the checker's "Original found at" link (ADR 0011; web search was measured at 0 of 9 and dropped); checker accounts (`python -m app.checkers`); Nepali-first public pages; `docker compose up -d --build` with `docs/install.md`.
 
 1. **More eval rows** (owner), so the held-out split (h041 onward, 4 rows now) reaches at least 10.
-2. **Full fresh eval run** (`uv run python -m app.eval.score --fresh`), now that verdicts carry the Nepali check, then held-out numbers in the README.
-3. **Demo video**, then the final AI disclosure check and a release merge to `main`.
+2. **Full fresh eval run** (`uv run python -m app.eval.score --fresh`): the verdict prompt changed (archive matches count as evidence), so earlier numbers are stale. Then held-out numbers in the README.
+3. **Delete `data/hamsa.db`** before the demo: it holds end-to-end test cases and a removed "Compose Test" checker.
+4. **Demo video**, then the AI disclosure check and a release merge to `main`.
 
-Known misses: h005/h006 (the "original" is a different shot), h007 (news template). The local `data/hamsa.db` holds test cases from end-to-end checks; delete it for a clean demo.
+The disk is about 90% full; Docker images take ~4.5 GB. `docker builder prune` frees the build cache.
 
 ## Known limits and gotchas
 
