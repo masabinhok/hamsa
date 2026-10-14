@@ -33,6 +33,8 @@ class PublicCase(BaseModel):
     id: str
     status: CaseStatus
     verdict: PublishedVerdict | None = None
+    # The pasted link could not be opened, so the submitter is asked for the file.
+    needs_media: bool = False
 
 
 class DeskSummary(BaseModel):

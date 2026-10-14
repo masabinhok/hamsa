@@ -27,8 +27,9 @@ export default function Home() {
     const files = form.getAll("files").filter((f) => f instanceof File && f.size > 0);
     form.delete("files");
     files.forEach((file) => form.append("files", file));
-    if (!String(form.get("text") ?? "").trim() && files.length === 0) {
-      setError("Paste the post's text or attach its photo or video.");
+    const hasLink = String(form.get("url") ?? "").trim() !== "";
+    if (!String(form.get("text") ?? "").trim() && files.length === 0 && !hasLink) {
+      setError("Paste the post's link or text, or attach its photo or video.");
       return;
     }
     if (files.length > MAX_FILES) {
@@ -70,7 +71,7 @@ export default function Home() {
           <textarea name="text" rows={5} maxLength={5000} lang="ne" />
         </label>
         <label className={styles.field}>
-          <span>Link to the post (optional)</span>
+          <span>Link to the post</span>
           <input name="url" type="url" inputMode="url" placeholder="https://" />
         </label>
         <label className={styles.field}>

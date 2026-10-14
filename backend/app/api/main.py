@@ -156,8 +156,8 @@ async def submit(
             url = str(TypeAdapter(HttpUrl).validate_python(url))
         except ValidationError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid url") from error
-    if not (text or uploads):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send text or media")
+    if not (text or uploads or url):  # a link alone is fetched by the worker (ADR 0010)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send text, a link, or media")
     if len(uploads) > MAX_FILES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"at most {MAX_FILES} files")
 
@@ -183,7 +183,9 @@ async def submit(
 def public_case(session: DbSession, case_id: str) -> PublicCase:
     case = get_case(session, case_id)
     verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
-    return PublicCase(id=case.id, status=case.status, verdict=verdict)
+    tried = case.status not in (CaseStatus.RECEIVED, CaseStatus.PROCESSING)
+    needs_media = tried and bool(case.source_url) and not case.media
+    return PublicCase(id=case.id, status=case.status, verdict=verdict, needs_media=needs_media)
 
 
 @public.get("/verdicts")

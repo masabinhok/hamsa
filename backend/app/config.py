@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     reasoning_model: str = "openai/gpt-oss-120b"
     checking_model: str = "openai/gpt-oss-20b"
+    # Browser whose login yt-dlp borrows to fetch pasted links (ADR 0010), e.g. firefox.
+    fetch_browser: str | None = None
 
     ollama_host: AnyHttpUrl = AnyHttpUrl("http://localhost:11434")
     vision_model: str = "qwen3-vl:8b-instruct"
