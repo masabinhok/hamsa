@@ -145,6 +145,14 @@
   margin: 0;
 }
 
+.en {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--step--1);
+  font-weight: 400;
+  color: var(--silt);
+}
+
 .quiet {
   color: var(--silt);
   font-size: var(--step--1);
