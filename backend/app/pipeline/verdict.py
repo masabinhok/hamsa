@@ -104,10 +104,11 @@ class Reasoner(Protocol):
 
 
 NEPALI_CHECK_SYSTEM = """\
-You check a Nepali translation of an English fact-check rationale. Decide whether the \
-Nepali says the same thing: the same verdict direction, facts, places, dates, numbers and \
-negations. Ignore style, spelling and word choice. "problem" names the contradicted or \
-missing fact, or is empty when the Nepali is faithful.
+You check a Nepali translation of an English fact-check rationale before it is \
+published. It is unfaithful only if it contradicts the English (a different verdict, a \
+flipped negation, another place, date or number) or adds a claim the English does not \
+make. Leaving out a minor detail, style, spelling and word choice are fine. "problem" \
+names the contradiction or addition, or is empty when the Nepali is faithful.
 """
 
 

@@ -32,7 +32,10 @@ def build_pipeline(settings: Settings) -> Pipeline:
     if settings.groq_api_key is not None:
         groq = GroqClient(settings.groq_api_key.get_secret_value())
         reasoners.append((groq, settings.reasoning_model))
-        checker = (groq, settings.checking_model)
+        # At medium effort gpt-oss-20b wrote its reasoning where the JSON belongs on 9 of
+        # 29 eval verdicts; at low it answered all 30 of an earlier test.
+        low = GroqClient(settings.groq_api_key.get_secret_value(), reasoning_effort="low")
+        checker = (low, settings.checking_model)
     reasoners.append((ollama, settings.vision_model))  # fallback (ADR 0001, 0007)
 
     def extract(text: str | None, frames: Sequence[Frame]) -> Claim:
