@@ -120,6 +120,19 @@ class Job(Base):
     last_error: Mapped[str | None]
 
 
+class Lesson(Base):
+    """A published case the archive has still to learn from (worker, ADR 0011)."""
+
+    __tablename__ = "lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), index=True)
+    # Where the checker found the original footage, for a refuted case.
+    original_url: Mapped[str | None]
+    done_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
+    error: Mapped[str | None]
+
+
 class CaseEvent(Base):
     """Every status change, who made it, and why: the audit trail behind a verdict."""
 

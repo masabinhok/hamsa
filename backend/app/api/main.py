@@ -242,7 +242,10 @@ def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
             rationale_ne = body.rationale_ne or draft.get("rationale_ne")
             if label is None or not rationale_en or not rationale_ne:
                 raise DecisionError("no draft to publish: give label and both rationales")
-            publish(session, case, body.checker, label, rationale_en, rationale_ne, body.note)
+            original = str(body.original_url) if body.original_url else None
+            publish(
+                session, case, body.checker, label, rationale_en, rationale_ne, body.note, original
+            )
         elif body.action is Action.REJECT:
             reject(session, case, body.checker, body.note or "rejected")
         else:

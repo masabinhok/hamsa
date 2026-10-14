@@ -3,9 +3,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from app.ingest.download import Downloaded
-from app.pipeline.contracts import Route, Stage, StageFailure
+from app.pipeline.contracts import Route, Stage, StageFailure, VerdictLabel
 from app.pipeline.run import Result
 from app.router.route import StageOutputs
 from app.store.cases import Database, StoredMedia, create_case, open_claims
@@ -175,3 +176,32 @@ def test_download_retries_without_the_browser_login(
         tmp_path / "post.mp4"
     ]
     assert ["--cookies-from-browser" in c for c in commands] == [True, False]
+
+
+def test_published_cases_are_learned_once_and_failures_recorded(db: Database) -> None:
+    from app.learn import Verdicted
+    from app.store.cases import publish
+    from app.store.models import Lesson
+    from app.worker import learn_next
+
+    for case_id in ("c1", "c2"):
+        add_routed_case(db, case_id)
+        with db.session.begin() as session:
+            case = session.get_one(Case, case_id)
+            publish(session, case, "sita", VerdictLabel.FALSE, "en", "ne", None, None)
+    taught: list[str] = []
+
+    def teach(verdicted: Verdicted) -> list[str]:
+        if verdicted.case_id == "c2":
+            raise ValueError("dead link")
+        taught.append(verdicted.page_url)
+        return ["case-c1-0"]
+
+    assert learn_next(db, Path("/media"), "http://site", teach)
+    assert learn_next(db, Path("/media"), "http://site", teach)
+    assert not learn_next(db, Path("/media"), "http://site", teach)  # nothing left
+    assert taught == ["http://site/check/c1"]
+    with db.session() as session:
+        c1, c2 = session.scalars(select(Lesson).order_by(Lesson.id)).all()
+        assert c1.done_at is not None
+        assert c2.error == "ValueError: dead link"

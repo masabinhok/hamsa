@@ -57,8 +57,10 @@ footage, or an archive match each decide it. If the media is shown to be from el
 the post is false even when the event itself is real.
 
 Archive matches: a strong match to "prior" footage means the media is older or from \
-elsewhere, which is decisive for media presented as this incident. A weak match is only \
-a hint.
+elsewhere, which is decisive for media presented as this incident. It is evidence in \
+its own right, from the fact-checkers' archive: decide on it even though it has no label \
+to cite and no passage repeats it, and name it in the rationale ("the footage matches \
+..."). A weak match is only a hint.
 
 citations: every passage your decision relies on, by its label, with its stance toward \
 the claim: "supports" or "refutes". Cite nothing you did not use.
