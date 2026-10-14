@@ -94,7 +94,16 @@ export interface DeskCase extends DeskSummary {
 }
 
 export type Decision =
-  | { action: "publish"; checker: string; label?: Label; rationale_en?: string; rationale_ne?: string; note?: string }
+  | {
+      action: "publish";
+      checker: string;
+      label?: Label;
+      rationale_en?: string;
+      rationale_ne?: string;
+      note?: string;
+      // Where the checker found the original footage; Hamsa then recognises its reposts.
+      original_url?: string;
+    }
   | { action: "reject"; checker: string; note: string }
   | { action: "reopen"; checker: string; note: string };
 

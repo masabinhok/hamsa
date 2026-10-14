@@ -22,6 +22,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
   const [rationaleNe, setRationaleNe] = useState(draft?.rationale_ne ?? "");
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
+  const [original, setOriginal] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -42,6 +43,8 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
     }
   }
 
+  const refuting = label === "false" || label === "misleading";
+
   function publish(event: FormEvent) {
     event.preventDefault();
     if (!label) return;
@@ -52,6 +55,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         checker: name,
         label,
         ...(edited ? { rationale_en: rationaleEn, rationale_ne: rationaleNe } : {}),
+        ...(refuting && original.trim() ? { original_url: original.trim() } : {}),
       },
       "Published.",
     );
@@ -157,6 +161,17 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
             ))}
           </select>
         </label>
+        {refuting && (
+          <input
+            className={styles.note}
+            type="url"
+            inputMode="url"
+            placeholder="Original found at (link, optional)"
+            value={original}
+            onChange={(e) => setOriginal(e.target.value)}
+            aria-label="Link to the original footage, so Hamsa recognises its reposts"
+          />
+        )}
         <button className={styles.primary} disabled={busy || !label}>
           {label ? `Publish as ${labelName[label].en.toLowerCase()}` : "Publish"}
         </button>

@@ -29,6 +29,9 @@ class Frame:
 
 
 def frames_of(path: Path) -> list[Frame]:
+    if path.is_dir():  # keyframes kept from footage found online (ADR 0011)
+        images = sorted(p for p in path.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES)
+        return [Frame(i, 0.0, frames_from_image(p)[0].image) for i, p in enumerate(images)]
     suffix = path.suffix.lower()
     if suffix in IMAGE_SUFFIXES:
         return frames_from_image(path)

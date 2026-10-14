@@ -233,3 +233,23 @@ def test_public_case_asks_for_the_file_when_the_link_failed(
     with db.session.begin() as session:
         session.get_one(Case, "c9").source_url = "https://www.facebook.com/reel/1"
     assert client.get("/cases/c9").json()["needs_media"] is True
+
+
+def test_publishing_records_the_original_for_the_archive(client: TestClient, db: Database) -> None:
+    from sqlalchemy import select
+
+    from app.store.models import Lesson
+
+    add_routed_case(db, "c1")
+    body = {
+        "action": "publish",
+        "checker": "sita",
+        "label": "false",
+        "rationale_en": "It is from Alaska.",
+        "rationale_ne": "यो अलास्काको हो।",
+        "original_url": "https://www.instagram.com/reel/abc/",
+    }
+    assert client.post("/desk/cases/c1/decision", headers=AUTH, json=body).status_code == 200
+    with db.session() as session:
+        [lesson] = session.scalars(select(Lesson)).all()
+        assert lesson.original_url == "https://www.instagram.com/reel/abc/"
