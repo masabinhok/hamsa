@@ -81,3 +81,5 @@ class DecisionRequest(BaseModel):
     rationale_en: str | None = None
     rationale_ne: str | None = None
     note: str | None = None
+    # For publish: where the checker found the original footage; the archive keeps it.
+    original_url: HttpUrl | None = None

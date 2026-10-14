@@ -6,7 +6,9 @@ Shared by the worker, for pasted links, and the archive collector.
 import json
 import subprocess
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 # Keyframes are capped at 6 per video, so footage past five minutes adds nothing.
 YTDLP = (
@@ -30,6 +32,8 @@ class Downloaded:
     files: list[Path]
     # The post's own words: for a pasted link this is the claim to check.
     caption: str | None
+    title: str | None = None
+    uploaded: date | None = None
 
 
 def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
@@ -53,9 +57,13 @@ def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
             if i == len(attempts) - 1:
                 raise
     info = folder / "post.info.json"
-    caption = None
-    if info.is_file():
-        meta = json.loads(info.read_text(encoding="utf-8"))
-        caption = (meta.get("description") or meta.get("title") or "").strip() or None
+    meta: dict[str, Any] = json.loads(info.read_text(encoding="utf-8")) if info.is_file() else {}
+    caption: str | None = (meta.get("description") or meta.get("title") or "").strip() or None
+    day: str | None = meta.get("upload_date")
     files = sorted(p for p in folder.iterdir() if p.suffix != ".json" and p.is_file())
-    return Downloaded(files=files, caption=caption)
+    return Downloaded(
+        files=files,
+        caption=caption,
+        title=meta.get("title"),
+        uploaded=datetime.strptime(day, "%Y%m%d").date() if day else None,
+    )
