@@ -1,10 +1,12 @@
-"""Fetch trusted articles from WordPress REST APIs into data/corpus/articles.jsonl."""
+"""Fetch trusted articles from WordPress REST APIs and RSS feeds."""
 
 import html
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any
 
@@ -15,8 +17,11 @@ from app.pipeline.contracts import SourceKind
 
 USER_AGENT = "hamsa-corpus/0.1 (+https://github.com/masabinhok/hamsa)"
 PAGE_SIZE = 100
-NEPALI_TERMS = ("बाढी", "पहिरो", "डुबान", "हिमताल")
-ENGLISH_TERMS = ("flood", "landslide", "GLOF", "inundation")
+# Any disaster, not one event: floods, landslides (हिमपहिरो matches पहिरो), glacial lakes,
+# earthquakes, wildfires, fires, lightning.
+NEPALI_TERMS = ("बाढी", "पहिरो", "डुबान", "हिमताल", "भूकम्प", "डढेलो", "आगलागी", "चट्याङ")
+ENGLISH_TERMS = ("flood", "landslide", "GLOF", "inundation", "earthquake", "avalanche", "wildfire")
+RSS_CONTENT = "{http://purl.org/rss/1.0/modules/content/}encoded"
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,23 @@ class WordPressSource:
     # debunked years before it resurfaces.
     all_time: bool = False
 
+
+@dataclass(frozen=True)
+class RssSource:
+    """A feed lists only its latest items, so it suits `corpus watch`, not a backfill."""
+
+    name: str
+    feed_url: str
+    language: str
+    # A link containing one of these is the publisher's own fact-check.
+    fact_check_marks: tuple[str, ...] = ()
+
+
+FEEDS = (
+    RssSource("Techpana", "https://techpana.com/feed", "ne", ("fact-check", "factcheck")),
+    RssSource("Ratopati", "https://ratopati.com/feed", "ne"),
+    RssSource("Setopati", "https://www.setopati.com/feed", "ne"),
+)
 
 SOURCES = (
     WordPressSource(
@@ -116,6 +138,47 @@ def html_to_text(markup: str) -> str:
     extractor.feed(markup)
     lines = (re.sub(r"\s+", " ", line).strip() for line in "".join(extractor.parts).split("\n"))
     return "\n".join(line for line in lines if line)
+
+
+def mentions_disaster(text: str) -> bool:
+    folded = text.casefold()
+    return any(term.casefold() in folded for term in NEPALI_TERMS + ENGLISH_TERMS)
+
+
+def fetch_feed(client: httpx.Client, source: RssSource) -> Iterator[Article]:
+    """Disaster news and every fact-check from one feed.
+
+    shortcut: a feed item carries the headline and lead, not the whole article; fetch the
+    page if evidence from feeds proves too thin.
+    """
+    response = client.get(source.feed_url)
+    response.raise_for_status()
+    # Feeds come from a fixed list of outlets, and Python's expat (2.4.1+) refuses entity
+    # expansion attacks.
+    root = ET.fromstring(response.content)  # noqa: S314
+    for item in root.iter("item"):
+        link = (item.findtext("link") or "").strip()
+        title = html.unescape(html_to_text(item.findtext("title") or ""))
+        text = html_to_text(item.findtext(RSS_CONTENT) or item.findtext("description") or "")
+        published = item.findtext("pubDate")
+        if not (link and text and published):
+            continue
+        try:
+            url = HttpUrl(link)
+        except ValueError:
+            continue
+        fact_check = any(mark in link for mark in source.fact_check_marks)
+        if not fact_check and not mentions_disaster(f"{title}\n{text}"):
+            continue
+        yield Article(
+            url=url,
+            source=source.name,
+            source_kind=SourceKind.FACT_CHECK if fact_check else SourceKind.NEWS,
+            language=source.language,
+            title=title,
+            published_at=parsedate_to_datetime(published),
+            text=text,
+        )
 
 
 def fetch_source(client: httpx.Client, source: WordPressSource, since: date) -> Iterator[Article]:

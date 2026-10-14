@@ -95,6 +95,7 @@ cp .env.example .env                          # set GROQ_API_KEY and DESK_TOKEN
 cd backend && uv sync
 uv run python -m app.corpus fetch             # trusted articles, ~1 min
 uv run python -m app.corpus index             # embed into Qdrant, ~15 min on the GPU
+uv run python -m app.corpus watch             # keep it current: new articles every 15 min
 uv run python -m app.archive                  # media archive from data/archive and eval originals
 
 uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
