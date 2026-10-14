@@ -26,6 +26,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import HttpUrl, SecretStr, TypeAdapter, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -39,6 +40,7 @@ from app.api.schemas import (
     PublishedVerdict,
     Source,
 )
+from app.checkers import signed_in
 from app.config import REPO_ROOT, get_settings
 from app.pipeline.contracts import Route, VerdictLabel
 from app.store.cases import (
@@ -55,7 +57,7 @@ from app.store.cases import (
     reopen,
     save_media,
 )
-from app.store.models import Case, CaseEvent, CaseStatus, Channel
+from app.store.models import Case, CaseEvent, CaseStatus, Channel, Checker
 
 SUBMISSIONS_PER_MINUTE = 10  # per client IP; a fact-check desk is not a bulk API
 MAX_FILES = 4
@@ -86,14 +88,25 @@ def get_session(request: Request) -> Iterator[Session]:
 
 
 def require_checker(
-    request: Request, authorization: Annotated[str | None, Header()] = None
-) -> None:
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> str | None:
+    """The signed-in checker's name, or None for the operator's DESK_TOKEN."""
     token: SecretStr | None = request.app.state.desk_token
-    if token is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "desk disabled: set DESK_TOKEN")
-    expected = f"Bearer {token.get_secret_value()}"
-    if authorization is None or not secrets.compare_digest(authorization, expected):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "checker token required")
+    if token is None and session.scalar(select(Checker.id).limit(1)) is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "desk disabled: add a checker (python -m app.checkers add NAME) or set DESK_TOKEN",
+        )
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code required")
+    code = authorization.removeprefix("Bearer ")
+    if token is not None and secrets.compare_digest(code, token.get_secret_value()):
+        return None
+    if name := signed_in(session, code):
+        return name
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code not recognised")
 
 
 class RateLimiter:
@@ -196,6 +209,12 @@ def verdicts(session: DbSession) -> list[PublicCase]:
     ]
 
 
+@desk.get("/me")
+def me(who: Annotated[str | None, Depends(require_checker)]) -> dict[str, str | None]:
+    """Who this access code belongs to; None means the operator token, which names nobody."""
+    return {"name": who}
+
+
 @desk.get("/queue")
 def queue(session: DbSession, route: Route | None = None) -> list[DeskSummary]:
     return [summary(c) for c in desk_queue(session, route)]
@@ -232,7 +251,16 @@ def archive_media(
 
 
 @desk.post("/cases/{case_id}/decision")
-def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
+def decide(
+    session: DbSession,
+    case_id: str,
+    body: DecisionRequest,
+    who: Annotated[str | None, Depends(require_checker)],
+) -> DeskCase:
+    # A checker's own code names them; only the operator token may name someone.
+    checker = who or (body.checker or "").strip()
+    if not checker:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "say who decided")
     case = get_case(session, case_id)
     draft = _draft(case) or {}
     try:
@@ -243,13 +271,11 @@ def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
             if label is None or not rationale_en or not rationale_ne:
                 raise DecisionError("no draft to publish: give label and both rationales")
             original = str(body.original_url) if body.original_url else None
-            publish(
-                session, case, body.checker, label, rationale_en, rationale_ne, body.note, original
-            )
+            publish(session, case, checker, label, rationale_en, rationale_ne, body.note, original)
         elif body.action is Action.REJECT:
-            reject(session, case, body.checker, body.note or "rejected")
+            reject(session, case, checker, body.note or "rejected")
         else:
-            reopen(session, case, body.checker, body.note or "reopened")
+            reopen(session, case, checker, body.note or "reopened")
     except DecisionError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     session.flush()
