@@ -28,6 +28,7 @@ from qdrant_client import QdrantClient
 
 from app.config import REPO_ROOT, get_settings
 from app.eval.dataset import Tactic, load_items
+from app.ingest.download import YTDLP as DOWNLOAD_COMMAND
 from app.ingest.frames import frames_of
 from app.pipeline.contracts import ArchiveLabel
 from app.pipeline.media_match import (
@@ -43,19 +44,8 @@ from app.router.route import DEFAULT_THRESHOLDS
 ARCHIVE_DIR = REPO_ROOT / "data" / "archive"
 EVAL_DIR = REPO_ROOT / "data" / "eval"
 
-# Keyframes are capped at 6 per video, so footage past five minutes adds nothing.
-YTDLP = (
-    "yt-dlp",
-    "--no-playlist",
-    "--no-warnings",
-    "-f",
-    "bv*[height<=720]+ba/b",
-    "--merge-output-format",
-    "mp4",
-    "--download-sections",
-    "*0-300",
-    "--write-info-json",
-)
+# The archive also reads the title and upload date from yt-dlp's info file.
+YTDLP = (*DOWNLOAD_COMMAND, "--write-info-json")
 
 
 def _blank_to_none(value: object) -> object:
