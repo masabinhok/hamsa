@@ -90,7 +90,7 @@ Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](h
 ```bash
 docker compose up -d                          # Qdrant
 ollama pull qwen3-vl:8b-instruct && ollama pull bge-m3
-cp .env.example .env                          # set GROQ_API_KEY and DESK_TOKEN
+cp .env.example .env                          # set GROQ_API_KEY (and FETCH_BROWSER)
 
 cd backend && uv sync
 uv run python -m app.corpus fetch             # trusted articles, ~1 min
@@ -106,9 +106,9 @@ uv run python -m app.worker                               # in a second terminal
 cd ../frontend && npm install && npm run dev              # checker desk on :3000
 ```
 
-The desk asks for your name and the `DESK_TOKEN`. It talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` is set in `frontend/.env.local`.
+Give each fact-checker an account: `uv run python -m app.checkers add "Sita Sharma"` prints her access code once (only its hash is stored); `list` and `remove` manage the rest. The desk asks only for the code, and the server records the checker's name on every decision. An optional `DESK_TOKEN` is the operator's key: it opens the desk too, but asks who is deciding. It talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` is set in `frontend/.env.local`.
 
-Submit a link with `curl -F "url=https://www.facebook.com/reel/..." localhost:8000/cases`: the worker downloads the post and its caption with the browser login named in `FETCH_BROWSER` (ADR 0010). Or submit files with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer $DESK_TOKEN`. Interactive API docs: `localhost:8000/docs`.
+Submit a link with `curl -F "url=https://www.facebook.com/reel/..." localhost:8000/cases`: the worker downloads the post and its caption with the browser login named in `FETCH_BROWSER` (ADR 0010). Or submit files with `curl -F "text=..." -F "files=@post.mp4" localhost:8000/cases`; the checker desk API is under `/desk` with `Authorization: Bearer <access code>`. Interactive API docs: `localhost:8000/docs`.
 
 ## Evaluation
 

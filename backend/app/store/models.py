@@ -120,6 +120,18 @@ class Job(Base):
     last_error: Mapped[str | None]
 
 
+class Checker(Base):
+    """A fact-checker with their own access code. Only the code's hash is kept."""
+
+    __tablename__ = "checkers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True)
+    code_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    active: Mapped[bool] = mapped_column(default=True)
+
+
 class Lesson(Base):
     """A published case the archive has still to learn from (worker, ADR 0011)."""
 
