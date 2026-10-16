@@ -10,6 +10,7 @@ import styles from "./site.module.css";
 
 // Limits enforced by the API (backend/app/api/main.py); checked here to fail early.
 const MAX_FILES = 4;
+const MAX_FILES_NE = "४";
 const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
 
 export default function Home() {
@@ -38,7 +39,7 @@ export default function Home() {
     }
     if (files.length > MAX_FILES) {
       setError([
-        `बढीमा ${MAX_FILES.toLocaleString("ne-NP")} वटा फाइल जोड्नुहोस्।`,
+        `बढीमा ${MAX_FILES_NE} वटा फाइल जोड्नुहोस्।`,
         `Attach at most ${MAX_FILES} files.`,
       ]);
       return;
@@ -86,7 +87,7 @@ export default function Home() {
         </label>
         <label className={styles.field}>
           <Both
-            ne={`फोटो वा भिडियो (बढीमा ${MAX_FILES.toLocaleString("ne-NP")} वटा, प्रत्येक १०० MB सम्म)`}
+            ne={`फोटो वा भिडियो (बढीमा ${MAX_FILES_NE} वटा, प्रत्येक १०० MB सम्म)`}
             en={`Its photos or video (up to ${MAX_FILES}, 100 MB each)`}
           />
           <input name="files" type="file" accept={ACCEPT} multiple />
