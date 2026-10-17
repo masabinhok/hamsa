@@ -93,3 +93,11 @@
   border-radius: 3px;
   font-family: inherit;
 }
+
+/* Why the case is here: the first thing to check before trusting the draft. */
+.reason {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink-soft);
+}

@@ -2,7 +2,8 @@
 import type { Label, Route } from "./api";
 
 export const routeGroup: Record<Route, string> = {
-  fast_track: "Ready to publish",
+  // Strong evidence, but still a draft: a checker confirms before anything is published.
+  fast_track: "Quick check",
   human_review: "Needs a checker",
   investigate: "New claims",
   dismiss: "Not a factual claim",
@@ -17,6 +18,24 @@ export const labelName: Record<Label, { en: string; ne: string }> = {
   true: { en: "True", ne: "सत्य" },
   unverifiable: { en: "Unverifiable", ne: "पुष्टि हुन नसकेको" },
 };
+
+// Why the router put a case where it is, in two or three words for the queue.
+export function reasonTag(reasons: string[]): string | null {
+  const first = reasons[0]?.toLowerCase() ?? "";
+  const tags: [string, string][] = [
+    ["recycled media", "Recycled footage"],
+    ["prior fact-check agrees", "Fact-check agrees"],
+    ["strong evidence", "News confirms"],
+    ["visible ai-tool watermark", "AI watermark"],
+    ["nepali rationale", "Check the Nepali"],
+    ["new claim", "Nothing known yet"],
+    ["drafted by the local fallback", "Backup model draft"],
+    ["failed", "Step failed"],
+    ["cited", "Sources disagree"],
+    ["ambiguous", "Evidence unclear"],
+  ];
+  return tags.find(([start]) => first.includes(start))?.[1] ?? null;
+}
 
 export function timeAgo(iso: string, now = Date.now()): string {
   const minutes = Math.round((now - new Date(iso).getTime()) / 60000);
