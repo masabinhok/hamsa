@@ -8,8 +8,35 @@
   display: grid;
   align-content: start;
   gap: var(--space-6);
-  max-width: 52rem;
+  max-width: 92rem;
   padding: var(--space-7) var(--space-6) var(--space-6);
+}
+
+.columns {
+  display: grid;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.column {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+@media (min-width: 75rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.history {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.history summary {
+  cursor: pointer;
 }
 
 .notice {
@@ -29,7 +56,8 @@
   max-width: 34ch;
   font-family: var(--font-read);
   font-weight: 600;
-  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 2.4rem);
+  /* Big enough to read at a glance, small enough to keep the draft above the fold. */
+  font-size: clamp(1.35rem, 1rem + 1vw, 1.85rem);
   line-height: 1.35;
   text-wrap: balance;
 }
@@ -256,7 +284,7 @@
   margin-bottom: var(--space-4);
 }
 
-.history {
+.events {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -292,4 +320,8 @@
 
 .actor {
   color: var(--silt);
+}
+
+details.match summary {
+  cursor: pointer;
 }

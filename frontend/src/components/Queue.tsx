@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import type { DeskSummary, Route } from "@/lib/api";
 import { useQueue } from "@/lib/queue";
-import { labelName, routeGroup, routeOrder, timeAgo } from "@/lib/words";
+import { labelName, reasonTag, routeGroup, routeOrder, timeAgo } from "@/lib/words";
 import styles from "./Queue.module.css";
 
 export function Queue() {
@@ -77,6 +77,7 @@ function QueueItem({ item, route, current }: { item: DeskSummary; route: Route; 
               {labelName[item.proposed_label].en}
             </span>
           )}
+          {reasonTag(item.reasons) && <span className={styles.reason}>{reasonTag(item.reasons)}</span>}
           <span>{timeAgo(item.created_at)}</span>
           {item.media_count > 0 && <span>{item.media_count === 1 ? "1 file" : `${item.media_count} files`}</span>}
         </span>
