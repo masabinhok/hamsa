@@ -89,76 +89,86 @@ export function CaseView({ id }: { id: string }) {
           </p>
         </header>
 
-        <section className={styles.section} aria-labelledby="why">
-          <h2 id="why" className={styles.heading}>
-            Why it is here
-          </h2>
-          <ul className={styles.reasons}>
-            {current.reasons.map((reason) => (
-              <li key={reason}>{sentence(reason)}</li>
-            ))}
-          </ul>
-          {outputs?.failures.map((failure) => (
-            <p key={failure.stage} className={styles.failure}>
-              The {failure.stage.replace("_", " ")} step failed: {failure.error}
-            </p>
-          ))}
-        </section>
-
-        {verdict && <DraftVerdict verdict={verdict} />}
-
-        {(current.media.length > 0 || hits.length > 0) && (
-          <section className={styles.section} aria-labelledby="media">
-            <h2 id="media" className={styles.heading}>
-              The post&rsquo;s media
-            </h2>
-            <div className={styles.mediaGrid}>
-              <div className={styles.mediaColumn}>
-                {current.media.map((name) => (
-                  <AuthedMedia
-                    key={name}
-                    path={`/desk/cases/${current.id}/media/${encodeURIComponent(name)}`}
-                    alt="Submitted media"
-                    searchable
-                    // Match timestamps index the post's frames; only unambiguous for one file.
-                    start={current.media.length === 1 ? strong[0]?.post_seconds : null}
-                  />
-                ))}
-              </div>
-              <div className={styles.mediaColumn}>
-                {strong.length === 0 && (
-                  <p className={styles.quiet}>No match in the archive of known footage.</p>
-                )}
-                {strong.map((hit) => (
-                  <ArchiveMatch key={hit.archive_id} caseId={current.id} hit={hit} />
-                ))}
-                {weak.length > 0 && (
-                  <div className={styles.match}>
-                    <p className={styles.matchTitle}>Look-alikes, not the same footage</p>
-                    {weak.map((hit) => (
-                      <p key={hit.archive_id} className={styles.quiet}>
-                        {hit.original_context} ({Math.round((hit.cosine ?? 0) * 100)}% similar){" "}
-                        <a href={hit.source_url} target="_blank" rel="noreferrer">
-                          open
-                        </a>
-                      </p>
+        {/* Left: the post itself. Right: what Hamsa drafted and the sources it relied on,
+            so a checker reads a verdict next to its evidence (stacked on narrow screens). */}
+        <div className={styles.columns}>
+          <div className={styles.column}>
+            {(current.media.length > 0 || hits.length > 0) && (
+              <section className={styles.section} aria-labelledby="media">
+                <h2 id="media" className={styles.heading}>
+                  The post&rsquo;s media
+                </h2>
+                <div className={styles.mediaGrid}>
+                  <div className={styles.mediaColumn}>
+                    {current.media.map((name) => (
+                      <AuthedMedia
+                        key={name}
+                        path={`/desk/cases/${current.id}/media/${encodeURIComponent(name)}`}
+                        alt="Submitted media"
+                        searchable
+                        // Match timestamps index the post's frames; only unambiguous for one file.
+                        start={current.media.length === 1 ? strong[0]?.post_seconds : null}
+                      />
                     ))}
                   </div>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+                  <div className={styles.mediaColumn}>
+                    {strong.length === 0 && (
+                      <p className={styles.quiet}>No match in the archive of known footage.</p>
+                    )}
+                    {strong.map((hit) => (
+                      <ArchiveMatch key={hit.archive_id} caseId={current.id} hit={hit} />
+                    ))}
+                    {weak.length > 0 && (
+                      // Similar scenes, not the same footage: worth a glance, not a place in the layout.
+                      <details className={styles.match}>
+                        <summary className={styles.matchTitle}>
+                          {weak.length} look-alike{weak.length === 1 ? "" : "s"}, not the same footage
+                        </summary>
+                        {weak.map((hit) => (
+                          <p key={hit.archive_id} className={styles.quiet}>
+                            {hit.original_context} ({Math.round((hit.cosine ?? 0) * 100)}% similar){" "}
+                            <a href={hit.source_url} target="_blank" rel="noreferrer">
+                              open
+                            </a>
+                          </p>
+                        ))}
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
-        {claim && <ReadFromPost claim={claim} />}
+            {claim && <ReadFromPost claim={claim} />}
 
-        <Evidence passages={passages} verdict={verdict} />
+          </div>
+          <div className={styles.column}>
+            <section className={styles.section} aria-labelledby="why">
+              <h2 id="why" className={styles.heading}>
+                Why it is here
+              </h2>
+              <ul className={styles.reasons}>
+                {current.reasons.map((reason) => (
+                  <li key={reason}>{sentence(reason)}</li>
+                ))}
+              </ul>
+              {outputs?.failures.map((failure) => (
+                <p key={failure.stage} className={styles.failure}>
+                  The {failure.stage.replace("_", " ")} step failed: {failure.error}
+                </p>
+              ))}
+            </section>
 
-        <section className={styles.section} aria-labelledby="history">
-          <h2 id="history" className={styles.heading}>
-            History
-          </h2>
-          <ol className={styles.history}>
+            {verdict && <DraftVerdict verdict={verdict} />}
+
+            <Evidence passages={passages} verdict={verdict} />
+
+          </div>
+        </div>
+
+        <details className={styles.history}>
+          <summary className={styles.heading}>History</summary>
+          <ol className={styles.events}>
             {current.events.map((event, index) => (
               <li key={index}>
                 <time dateTime={event.at}>{new Date(event.at).toLocaleTimeString("en-GB")}</time>
@@ -174,7 +184,7 @@ export function CaseView({ id }: { id: string }) {
               Processed in {Object.values(current.seconds).reduce((a, b) => a + b, 0).toFixed(1)} s
             </p>
           )}
-        </section>
+        </details>
       </div>
 
       <DecisionBar found={current} onDecided={setFound} />
@@ -293,7 +303,7 @@ function Evidence({ passages, verdict }: { passages: Passage[]; verdict: Verdict
   return (
     <section className={styles.section} aria-labelledby="evidence">
       <h2 id="evidence" className={styles.heading}>
-        Evidence
+        Sources it relied on
       </h2>
       {passages.length === 0 && (
         <p className={styles.quiet}>Nothing in the trusted sources addresses this claim yet.</p>
