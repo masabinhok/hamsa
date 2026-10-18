@@ -104,6 +104,7 @@ uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
 
 uv run uvicorn --factory app.api.main:default_app         # API on :8000
 uv run python -m app.worker                               # in a second terminal
+uv run python -m app.telegram                             # optional: the Telegram bot (TELEGRAM_BOT_TOKEN)
 
 cd ../frontend && npm install && npm run dev              # checker desk on :3000
 ```
