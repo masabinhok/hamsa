@@ -16,7 +16,7 @@ A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post,
 
 1. **Extracts the claim.** Qwen3-VL reads the post and its frames and outputs structured JSON: claim, place, date claimed, numbers, and any watermarks or usernames visible in the frames.
 2. **Checks whether the media is recycled.** Perceptual hashing catches reposts even when re-encoded, mirrored, letterboxed, or captioned, and SigLIP embeddings catch heavier crops, both matched against an archive of past disaster footage from Nepal and abroad.
-3. **Retrieves evidence.** bge-m3 cross-lingual search (Nepali ↔ English) over trusted news and official sources.
+3. **Retrieves evidence.** bge-m3 cross-lingual search (Nepali ↔ English) over trusted news and official sources, plus fact-checks published abroad (AFP, Boom, Alt News and others) through Google's ClaimReview search when a key is set.
 4. **Drafts a verdict.** gpt-oss-120b reasons over the evidence and returns a verdict, a confidence score, and citations as JSON.
 5. **Routes the case.** The router acts on the AI's outputs: it auto-merges duplicate claims, fast-tracks high-confidence recycled media, sends ambiguous cases to a human checker with side-by-side evidence, and queues new claims for investigation.
 6. **Keeps a human in charge.** Nothing is published without a checker's one-click approval.

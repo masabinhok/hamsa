@@ -154,6 +154,7 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `
   - RSS feeds, which list only the latest items with a headline and lead: Techpana, Ratopati, and Setopati. Techpana items whose link contains "fact-check" are stored as fact-checks.
   - News is limited to disaster terms of any kind: बाढी, पहिरो, डुबान, हिमताल, भूकम्प, डढेलो, आगलागी, चट्याङ; flood, landslide, GLOF, inundation, earthquake, avalanche, wildfire.
   - Fact-checks are fetched from all time, because recycled clips are often debunked years earlier.
+  - **Fact-checks published abroad** (AFP, Boom, Alt News and others, which debunked 22 of the 33 eval posts labelled from a fact-check) are searched per case through Google's ClaimReview index when `FACT_CHECK_API_KEY` is set, with the English claim and the on-screen text. Up to 2 reviews not already in the corpus go first among the 8 passages ([ADR 0012](adr/0012-search-fact-checks-published-abroad.md), `backend/app/pipeline/claim_reviews.py`). A failed search leaves corpus evidence only.
   - Other outlets block automated access or publish malformed feeds; any outlet with a WordPress API or an RSS feed is added with one line in `backend/app/corpus/fetch.py`.
 - **Corpus as of 2026-10-06:** 5,365 articles, 15,065 passages.
 - **Chunking:** paragraphs packed into chunks of at most 1,200 characters, splitting long paragraphs at sentence ends (`।` and `.`). The article title is prepended to each chunk before embedding.
@@ -172,7 +173,7 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `
 | "24 rescued from the Chilime tunnel" (debunked by Techpana, not in the corpus) | News reporting people still trapped, which is the evidence that refutes it |
 | "Melamchi bazaar swept away, 50 missing" (invented) | No Melamchi evidence, only real Rasuwa coverage, so the verdict should be `unverifiable` |
 
-**Evaluation caveat:** the corpus contains published fact-checks, including those for eval items. That is the realistic case, since Hamsa's main job is catching claims that are already debunked as they resurface. But it flatters verdict accuracy, so the eval also reports a run with fact-check passages excluded.
+**Evaluation caveat:** the corpus contains published fact-checks, including those for eval items. That is the realistic case, since Hamsa's main job is catching claims that are already debunked as they resurface. But it flatters verdict accuracy, so the eval also reports a run with fact-check passages excluded; that run also turns the ClaimReview search off.
 
 ### 3.6 Verdict (gpt-oss-120b on Groq, local fallback)
 

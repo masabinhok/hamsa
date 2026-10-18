@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     reasoning_model: str = "openai/gpt-oss-120b"
     checking_model: str = "openai/gpt-oss-20b"
+    # Optional: Google Fact Check Tools, to find fact-checks published abroad (ADR 0012).
+    fact_check_api_key: SecretStr | None = None
     # Browser whose login yt-dlp borrows to fetch pasted links (ADR 0010), e.g. firefox.
     fetch_browser: str | None = None
 
