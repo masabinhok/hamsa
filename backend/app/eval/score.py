@@ -174,7 +174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 pipeline = build_pipeline(settings)
                 if args.no_fact_checks:
                     store = WithoutFactChecks(QdrantClient(url=str(settings.qdrant_url)))
-                    pipeline = replace(pipeline, evidence=store)
+                    pipeline = replace(pipeline, evidence=store, find_reviews=None)
             media = [EVAL_DIR / "media" / item.media_file] if item.media_file else []
             result = with_retries(
                 partial(run, pipeline, item.claim_text, media, seen_on=item.posted_on)

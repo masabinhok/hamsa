@@ -4,10 +4,11 @@ This guide is for the person who sets Hamsa up for a newsroom or fact-checking t
 
 ## What you need
 
-- **A Linux computer that stays on**, with an NVIDIA GPU with 8 GB of memory or more, 16 GB of RAM, and 60 GB of free disk. Hamsa runs fully on this machine; posts and verdicts never leave it except for the verdict and Nepali checks sent to Groq.
+- **A Linux computer that stays on**, with an NVIDIA GPU with 8 GB of memory or more, 16 GB of RAM, and 60 GB of free disk. Hamsa runs fully on this machine; posts and verdicts never leave it except for the verdict and Nepali checks sent to Groq, and, if you set a fact-check search key, each claim's English text sent to Google's fact-check search.
 - **Docker** with the compose plugin.
 - **[Ollama](https://ollama.com)** for the local models. It runs outside Docker because it needs the GPU.
 - **A free [Groq](https://console.groq.com) API key** for the verdict model (open-weight gpt-oss). Without it, verdicts run on the local model, which is weaker and never fast-tracked.
+- **Optional: a free Google Fact Check Tools API key**, so Hamsa also finds fact-checks published abroad (AFP, Boom, Alt News and others). In the [Google Cloud console](https://console.cloud.google.com), create a project, enable "Fact Check Tools API", and create an API key under Credentials.
 - **Firefox, signed in to Facebook and TikTok** with an account the desk uses. Hamsa borrows that login to open links readers send (ADR 0010). YouTube needs no login.
 
 ## Set it up
@@ -20,7 +21,8 @@ ollama pull qwen3-vl:8b-instruct
 ollama pull bge-m3
 
 cp .env.example .env
-# In .env: set GROQ_API_KEY, and FETCH_BROWSER=firefox to open Facebook and TikTok links.
+# In .env: set GROQ_API_KEY, FETCH_BROWSER=firefox to open Facebook and TikTok links,
+# and FACT_CHECK_API_KEY if you have one.
 
 docker compose up -d --build
 ```

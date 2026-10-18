@@ -14,6 +14,7 @@ import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException
 
 from app.ingest.frames import Frame, frames_of
+from app.pipeline.claim_reviews import FindReviews, add_reviews
 from app.pipeline.contracts import (
     Claim,
     Duplicate,
@@ -42,6 +43,8 @@ class Pipeline:
     embed_text: EmbedText
     reasoners: Sequence[tuple[Reasoner, str]]
     nepali_checker: tuple[Reasoner, str] | None = None
+    # Fact-checks published anywhere (ADR 0012); None without an API key.
+    find_reviews: FindReviews | None = None
 
 
 @dataclass
@@ -124,11 +127,14 @@ def run(
     )
     evidence: Evidence | None = stage(
         Stage.RETRIEVE,
-        lambda: retrieve(
-            claim,
-            pipeline.evidence,
-            pipeline.embed_text,
-            news_since(claim, seen_on or date.today()),
+        lambda: add_reviews(
+            retrieve(
+                claim,
+                pipeline.evidence,
+                pipeline.embed_text,
+                news_since(claim, seen_on or date.today()),
+            ),
+            pipeline.find_reviews(claim) if pipeline.find_reviews else [],
         ),
     )
     if matched is None or evidence is None:
