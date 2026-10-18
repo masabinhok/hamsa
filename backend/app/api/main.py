@@ -196,9 +196,9 @@ async def submit(
 def public_case(session: DbSession, case_id: str) -> PublicCase:
     case = get_case(session, case_id)
     verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
-    tried = case.status not in (CaseStatus.RECEIVED, CaseStatus.PROCESSING)
-    needs_media = tried and bool(case.source_url) and not case.media
-    return PublicCase(id=case.id, status=case.status, verdict=verdict, needs_media=needs_media)
+    return PublicCase(
+        id=case.id, status=case.status, verdict=verdict, needs_media=needs_media(case)
+    )
 
 
 @public.get("/verdicts")
@@ -307,6 +307,12 @@ def create_app(
 def _draft(case: Case) -> dict[str, Any] | None:
     outputs: dict[str, Any] = case.outputs or {}
     return outputs.get("verdict")
+
+
+def needs_media(case: Case) -> bool:
+    """The worker tried the pasted link and got nothing, so the submitter is asked for the file."""
+    tried = case.status not in (CaseStatus.RECEIVED, CaseStatus.PROCESSING)
+    return tried and bool(case.source_url) and not case.media
 
 
 def published_verdict(case: Case) -> PublishedVerdict | None:

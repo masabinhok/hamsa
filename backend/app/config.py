@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # Shared secret for the checker desk; the desk API is disabled while unset.
     desk_token: SecretStr | None = None
     frontend_origin: str = "http://localhost:3000"
+    # From @BotFather; `python -m app.telegram` refuses to start without it.
+    telegram_bot_token: SecretStr | None = None
 
 
 @lru_cache

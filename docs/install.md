@@ -51,6 +51,16 @@ This prints Sita's access code once. Give it to her privately; Hamsa keeps only 
 - **Checker desk:** `http://localhost:3000/desk`. Sign in with an access code. Cases arrive sorted: ready to publish, needs a checker, new claims.
   - When you refute a recycled post, paste where you found the original into "Original found at". Hamsa remembers that footage, and its next reposts are recognised without anyone searching.
 
+### Telegram bot (optional)
+
+Readers can forward doubtful posts to a Telegram bot instead of opening the website.
+
+1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and follow the steps. It gives you a token.
+2. In `.env`, set `TELEGRAM_BOT_TOKEN` to that token, and `FRONTEND_ORIGIN` to the public address of your site, since the bot's report links point there.
+3. Start it: `docker compose --profile telegram up -d`.
+
+The bot replies to each post with its report link, and messages the reader again when a verdict is published. `docker compose logs -f telegram` shows what it receives.
+
 ## Look after it
 
 | Task | Command |
@@ -63,5 +73,6 @@ This prints Sita's access code once. Give it to her privately; Hamsa keeps only 
 ## Known limits
 
 - **Linux only.** The backend uses host networking to reach Ollama.
-- **Links to private or deleted posts** cannot be opened; the report page asks the reader for the file instead.
+- **Links to private or deleted posts** cannot be opened; the report page (and the Telegram bot) asks the reader for the file instead.
+- **Telegram files over 20 MB** are not passed to bots; the bot asks for the post's link instead.
 - **The first report of new footage still needs a checker.** Hamsa recognises footage it has seen before; it does not search the web for originals (ADR 0011 explains why).
