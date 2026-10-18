@@ -4,7 +4,17 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
-from sqlalchemy import JSON, DateTime, Dialect, Enum, ForeignKey, Index, String, TypeDecorator
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    Dialect,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    TypeDecorator,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -130,6 +140,20 @@ class Checker(Base):
     code_sha256: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     active: Mapped[bool] = mapped_column(default=True)
+
+
+class TelegramReport(Base):
+    """The chat a Telegram submission came from, so the bot can send the verdict back."""
+
+    __tablename__ = "telegram_reports"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)  # Telegram ids exceed 32 bits
+    message_id: Mapped[int]
+    # The last case event the submitter heard about; event ids only grow, so a
+    # verdict corrected after a reopen is a newer event and is sent again.
+    told_event: Mapped[int] = mapped_column(default=0)
+    asked_for_media: Mapped[bool] = mapped_column(default=False)
 
 
 class Lesson(Base):

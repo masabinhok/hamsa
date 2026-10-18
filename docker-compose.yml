@@ -41,6 +41,12 @@ services:
     <<: *backend
     command: python -m app.corpus watch
 
+  # Optional: docker compose --profile telegram up -d (needs TELEGRAM_BOT_TOKEN).
+  telegram:
+    <<: *backend
+    command: python -m app.telegram
+    profiles: [telegram]
+
   frontend:
     build:
       context: .
