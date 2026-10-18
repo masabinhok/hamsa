@@ -1,9 +1,68 @@
-.page {
+/* Public site: send a post on the left, follow it on the right. */
+.site {
+  /* Devanagari needs a larger size than Latin to read comfortably. */
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.sendPane,
+.statusPane {
   display: grid;
+  /* minmax(0, …) lets wide children (file inputs, long words) shrink instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: var(--space-6);
-  max-width: 40rem;
-  margin: 0 auto;
   padding: var(--space-6) var(--space-4) var(--space-7);
+}
+
+.sendPane {
+  background: var(--milk-deep);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* On phones an open report comes first: someone following a shared link wants its status. */
+.site {
+  display: grid;
+}
+
+.site[data-open] .statusPane {
+  order: -1;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Wide screens: two columns, each scrolling on its own. */
+@media (min-width: 60rem) {
+  .site {
+    display: grid;
+    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
+    height: 100dvh;
+  }
+
+  .sendPane,
+  .statusPane {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-7) var(--space-6);
+  }
+
+  .submitBar {
+    margin-inline: calc(-1 * var(--space-6));
+    padding-inline: var(--space-6);
+  }
+
+  .site[data-open] .statusPane {
+    order: 0;
+    border-bottom: 0;
+  }
+
+  .sendPane {
+    border-bottom: 0;
+    border-right: 1px solid var(--rule);
+  }
+
+  .statusPane > * {
+    max-width: 42rem;
+  }
 }
 
 .header {
@@ -12,6 +71,7 @@
 }
 
 .brand {
+  justify-self: start;
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
@@ -19,50 +79,80 @@
   text-decoration: none;
 }
 
+.brandNe {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
 .title {
   font-family: var(--font-read);
   font-size: var(--step-3);
-  line-height: 1.3;
-  margin: 0;
+  line-height: 1.35;
 }
 
 .lede {
   color: var(--ink-soft);
-  margin: 0;
 }
 
 .form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
 .field {
   display: grid;
-  gap: var(--space-1);
-  font-weight: 500;
+  gap: var(--space-2);
+  font-weight: 600;
 }
 
 .field textarea,
 .field input {
-  font: inherit;
   font-weight: 400;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: 6px;
   background: white;
   color: var(--ink);
 }
 
+.field textarea {
+  resize: vertical;
+}
+
+.field input[type="file"] {
+  padding: var(--space-4) var(--space-3);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+}
+
+/* The send button stays in reach while the left column scrolls. */
+.submitBar {
+  position: sticky;
+  bottom: 0;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4);
+  background: var(--milk-deep);
+}
+
 .submit {
-  justify-self: start;
-  padding: var(--space-2) var(--space-5);
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--ink);
   color: var(--milk);
-  font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--ink-soft);
 }
 
 .submit:disabled {
@@ -72,16 +162,167 @@
 
 .error {
   color: var(--false);
-  margin: 0;
 }
 
 .heading {
   font-size: var(--step-0);
   font-weight: 600;
-  margin: 0;
 }
 
-.recent {
+/* English sits under the Nepali, smaller and quieter, never competing with it. */
+.en {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 0.85em;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--silt);
+}
+
+.empty {
+  padding: var(--space-5);
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  color: var(--ink-soft);
+}
+
+.quiet {
+  color: var(--silt);
+  font-size: var(--step--1);
+}
+
+/* The report being followed. */
+.status {
+  display: grid;
+  gap: var(--space-5);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Progress reads like water moving down a channel: done steps filled, the current one live. */
+.steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  position: relative;
+  padding: 0 0 var(--space-5) var(--space-6);
+  color: var(--silt);
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+.step::before {
+  content: "";
+  position: absolute;
+  left: 0.3rem;
+  top: 0.9rem;
+  bottom: -0.4rem;
+  width: 2px;
+  background: var(--rule);
+}
+
+.step:last-child::before {
+  display: none;
+}
+
+.step::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid var(--rule);
+  border-radius: 50%;
+  background: var(--milk);
+}
+
+.step[data-state="done"],
+.step[data-state="now"] {
+  color: var(--ink);
+}
+
+.step[data-state="done"]::before {
+  background: var(--glacier);
+}
+
+.step[data-state="done"]::after {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.step[data-state="now"] {
+  font-weight: 600;
+}
+
+.step[data-state="now"]::after {
+  border-color: var(--ink);
+  background: var(--glacier);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 0.35rem var(--glacier-wash);
+  }
+}
+
+.verdictLabel {
+  font-family: var(--font-read);
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.verdictLabel span {
+  font-family: var(--font-ui);
+  font-size: var(--step-1);
+  font-weight: 400;
+  color: var(--silt);
+  margin-left: var(--space-2);
+}
+
+.verdictLabel[data-label="false"] {
+  color: var(--false);
+}
+
+.verdictLabel[data-label="misleading"] {
+  color: var(--misleading);
+}
+
+.verdictLabel[data-label="true"] {
+  color: var(--true);
+}
+
+.verdictLabel[data-label="unverifiable"] {
+  color: var(--unverifiable);
+}
+
+.rationale {
+  font-family: var(--font-read);
+  font-size: 1.125rem;
+  line-height: 1.8;
+  max-width: 38em;
+}
+
+.rationaleEn {
+  color: var(--ink-soft);
+  max-width: 42em;
+}
+
+.sources {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Lists of other reports. */
+.group {
   display: grid;
   gap: var(--space-3);
 }
@@ -97,64 +338,57 @@
 .item {
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: 6px;
+  background: white;
   color: var(--ink);
-  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
 }
 
-.label {
+.item:hover {
+  border-color: var(--ink-soft);
+}
+
+.itemId {
   font-weight: 600;
-  margin: 0;
 }
 
-.label[data-label="false"] {
+.itemText {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Verdict colours carry meaning only (globals.css), here as a tinted tag. */
+.pill {
+  justify-self: start;
+  padding: 0 var(--space-2);
+  border-radius: 4px;
+  font-size: var(--step--1);
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 10%, white);
+}
+
+.pill span {
+  font-weight: 400;
+}
+
+.pill[data-label="false"] {
   color: var(--false);
 }
 
-.label[data-label="misleading"] {
+.pill[data-label="misleading"] {
   color: var(--misleading);
 }
 
-.label[data-label="true"] {
+.pill[data-label="true"] {
   color: var(--true);
 }
 
-.label[data-label="unverifiable"] {
+.pill[data-label="unverifiable"] {
   color: var(--unverifiable);
-}
-
-.waiting {
-  font-size: var(--step-1);
-  margin: 0;
-}
-
-.verdict {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.verdict .label {
-  font-size: var(--step-2);
-}
-
-.rationale {
-  font-family: var(--font-read);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.en {
-  display: block;
-  font-family: var(--font-ui);
-  font-size: var(--step--1);
-  font-weight: 400;
-  color: var(--silt);
-}
-
-.quiet {
-  color: var(--silt);
-  font-size: var(--step--1);
-  margin: 0;
 }
