@@ -20,13 +20,13 @@ This is the contract for how Hamsa works: what each part takes in, what it retur
 ```mermaid
 flowchart LR
     citizen([Citizen or journalist]) -->|post, link, or media| web[Web submit form]
-    citizen -.->|stretch goal| tg[Telegram bot]
+    citizen -->|forwarded post| tg[Telegram bot]
     checker([Fact-checker]) --> desk[Checker desk]
     public([Public]) --> feed[Published verdicts]
 
     subgraph hamsa [Hamsa on one machine]
         web --> api[FastAPI]
-        tg -.-> api
+        tg --> db
         desk --> api
         feed --> api
         api --> db[(SQLite<br/>cases, jobs, decisions)]
@@ -277,6 +277,8 @@ Implemented in `backend/app/store/`.
 ## 5. User journeys
 
 **Submitter.** Pastes a link, text, or media into the web form, then gets a case id and a status page. When the case is published, the status page shows the verdict in Nepali and English with sources.
+
+**Telegram submitter.** Forwards a post, or sends its link, photo or video, to the bot (`backend/app/telegram.py`, long polling, so no public address is needed). The bot writes the case like the API does (`Channel.TELEGRAM`) and replies with the report link. A `telegram_reports` row remembers the chat; each poll the bot sends news it has not sent yet: the published verdict with sources, a rejection, a merge into an earlier report (and later that report's verdict), or a request for the file when the link could not be opened. Only direct messages count, so a group cannot flood the desk. Files over 20 MB are refused by the Bot API, so the bot asks for the link instead.
 
 **Checker.**
 
