@@ -1,12 +1,12 @@
 """Request and response bodies. Public views never include model drafts."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, HttpUrl
 
-from app.pipeline.contracts import Route, VerdictLabel
+from app.pipeline.contracts import ArchiveLabel, Route, VerdictLabel
 from app.store.models import CaseStatus
 
 
@@ -21,17 +21,49 @@ class Source(BaseModel):
     stance: str
 
 
+class PublicClaim(BaseModel):
+    claim: str
+    claim_en: str
+    places: list[str]
+    claimed_date: date | None
+
+
+class EarlierFootage(BaseModel):
+    archive_label: ArchiveLabel
+    original_context: str
+    original_date: date | None
+    source_url: HttpUrl
+
+
 class PublishedVerdict(BaseModel):
     label: VerdictLabel
     rationale_en: str
     rationale_ne: str
     sources: list[Source]
     published_at: datetime
+    # Shown only once a checker has published: unreviewed uploads and model readings stay
+    # on the desk. Media are file names, served from /cases/{id}/media/{name}.
+    claim: PublicClaim | None = None
+    earlier_footage: list[EarlierFootage] = []
+    media: list[str] = []
+
+
+class PublicStep(BaseModel):
+    """A status change without who made it or why: those stay on the desk."""
+
+    at: datetime
+    status: str
 
 
 class PublicCase(BaseModel):
     id: str
     status: CaseStatus
+    created_at: datetime
+    text: str | None
+    source_url: str | None
+    media_count: int
+    timeline: list[PublicStep]
+    merged_into: str | None = None
     verdict: PublishedVerdict | None = None
     # The pasted link could not be opened, so the submitter is asked for the file.
     needs_media: bool = False

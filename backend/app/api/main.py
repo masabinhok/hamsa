@@ -36,7 +36,10 @@ from app.api.schemas import (
     DeskCase,
     DeskEvent,
     DeskSummary,
+    EarlierFootage,
     PublicCase,
+    PublicClaim,
+    PublicStep,
     PublishedVerdict,
     Source,
 )
@@ -194,19 +197,22 @@ async def submit(
 
 @public.get("/cases/{case_id}")
 def public_case(session: DbSession, case_id: str) -> PublicCase:
+    return public_view(get_case(session, case_id))
+
+
+@public.get("/cases/{case_id}/media/{name}")
+def public_media(request: Request, session: DbSession, case_id: str, name: str) -> FileResponse:
+    """A post's upload, once a checker has published: unreviewed uploads could be anything."""
     case = get_case(session, case_id)
-    verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
-    return PublicCase(
-        id=case.id, status=case.status, verdict=verdict, needs_media=needs_media(case)
-    )
+    if case.status is not CaseStatus.PUBLISHED or name not in {m.filename for m in case.media}:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such media")
+    media_root: Path = request.app.state.media_root
+    return FileResponse(media_root / case_id / name)
 
 
 @public.get("/verdicts")
 def verdicts(session: DbSession) -> list[PublicCase]:
-    return [
-        PublicCase(id=c.id, status=c.status, verdict=published_verdict(c))
-        for c in published(session)
-    ]
+    return [public_view(c) for c in published(session)]
 
 
 @desk.get("/me")
@@ -315,10 +321,28 @@ def needs_media(case: Case) -> bool:
     return tried and bool(case.source_url) and not case.media
 
 
+def public_view(case: Case) -> PublicCase:
+    verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
+    return PublicCase(
+        id=case.id,
+        status=case.status,
+        created_at=case.created_at,
+        text=case.text,
+        source_url=case.source_url,
+        media_count=len(case.media),
+        timeline=[PublicStep(at=e.at, status=e.to_status) for e in case.events],
+        merged_into=case.merged_into,
+        verdict=verdict,
+        needs_media=needs_media(case),
+    )
+
+
 def published_verdict(case: Case) -> PublishedVerdict | None:
     if case.final_label is None or not case.final_rationale_en or not case.final_rationale_ne:
         return None
     sources: list[Source] = []
+    claim: PublicClaim | None = None
+    footage: dict[str, EarlierFootage] = {}  # one entry per archive item, not per frame
     if case.outputs:
         outputs = outputs_from_json(case.outputs)
         if outputs.verdict and outputs.evidence:
@@ -328,12 +352,21 @@ def published_verdict(case: Case) -> PublishedVerdict | None:
                     sources.append(
                         Source(name=passage.source, url=passage.url, stance=citation.stance)
                     )
+        if outputs.claim:
+            claim = PublicClaim.model_validate(outputs.claim, from_attributes=True)
+        for hit in outputs.media_match.hits if outputs.media_match else []:
+            footage.setdefault(
+                hit.archive_id, EarlierFootage.model_validate(hit, from_attributes=True)
+            )
     return PublishedVerdict(
         label=VerdictLabel(case.final_label),
         rationale_en=case.final_rationale_en,
         rationale_ne=case.final_rationale_ne,
         sources=sources,
         published_at=case.updated_at,
+        claim=claim,
+        earlier_footage=list(footage.values()),
+        media=[m.filename for m in case.media],
     )
 
 
