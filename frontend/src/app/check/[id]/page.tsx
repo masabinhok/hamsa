@@ -1,6 +1,9 @@
-import { Site } from "@/components/Site";
+"use client";
 
-// Same page as the home page: the report id is read from the URL.
-export default function Check() {
-  return <Site />;
+import { use } from "react";
+import { Report } from "@/components/Report";
+
+export default function Check({ params }: PageProps<"/check/[id]">) {
+  const { id } = use(params);
+  return <Report id={decodeURIComponent(id)} />;
 }
