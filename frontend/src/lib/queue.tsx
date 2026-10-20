@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { desk, type DeskSummary } from "./api";
-import { useChecker } from "./session";
+import { ApiError, desk, type DeskSummary } from "./api";
+import { signOut, useChecker } from "./session";
 
 const POLL_MS = 5000; // new cases arrive while the checker works
 
@@ -23,8 +23,10 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     try {
       setItems(await desk.queue(token));
       setError(null);
-    } catch {
-      setError("Lost contact with the API. Retrying.");
+    } catch (caught) {
+      // A revoked code would otherwise keep polling and trip the API's wrong-code throttle.
+      if (caught instanceof ApiError && caught.status === 401) signOut();
+      else setError("Lost contact with the API. Retrying.");
     }
   }, [token]);
 
