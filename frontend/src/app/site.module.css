@@ -1,4 +1,4 @@
-/* Public site: send a post on the left, follow it on the right. */
+/* Public site: send a post (or browse reports) on the left, read on the right. */
 .site {
   /* Devanagari needs a larger size than Latin to read comfortably. */
   font-size: 1.0625rem;
@@ -6,6 +6,7 @@
 }
 
 .sendPane,
+.listPane,
 .statusPane {
   display: grid;
   /* minmax(0, …) lets wide children (file inputs, long words) shrink instead of widening the page. */
@@ -15,9 +16,38 @@
   padding: var(--space-6) var(--space-4) var(--space-7);
 }
 
-.sendPane {
+.sendPane,
+.listPane {
   background: var(--milk-deep);
   border-bottom: 1px solid var(--rule);
+}
+
+.masthead {
+  order: -2; /* stays on top when an open report moves first on phones */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  background: var(--milk);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--step--1);
+}
+
+.nav a {
+  color: var(--ink);
+  text-underline-offset: 0.2em;
+}
+
+.nav .deskLink {
+  color: var(--silt);
 }
 
 /* On phones an open report comes first: someone following a shared link wants its status. */
@@ -34,11 +64,18 @@
 @media (min-width: 60rem) {
   .site {
     display: grid;
-    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 3fr) minmax(0, 5fr);
+    grid-template-rows: auto minmax(0, 1fr);
     height: 100dvh;
   }
 
+  .masthead {
+    grid-column: 1 / -1;
+    padding-inline: var(--space-6);
+  }
+
   .sendPane,
+  .listPane,
   .statusPane {
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -55,13 +92,10 @@
     border-bottom: 0;
   }
 
-  .sendPane {
+  .sendPane,
+  .listPane {
     border-bottom: 0;
     border-right: 1px solid var(--rule);
-  }
-
-  .statusPane > * {
-    max-width: 42rem;
   }
 }
 
@@ -71,7 +105,6 @@
 }
 
 .brand {
-  justify-self: start;
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
@@ -194,9 +227,148 @@
 /* The report being followed. */
 .status {
   display: grid;
-  gap: var(--space-5);
-  padding-bottom: var(--space-6);
-  border-bottom: 1px solid var(--rule);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+.reportHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.copy {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--ink-soft);
+}
+
+.verdict {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-radius: 8px;
+  background: white;
+  border: 1px solid var(--rule);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+/* The post as the submitter sent it: quoted, not restyled as Hamsa's own words. */
+.post {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--glacier);
+  background: white;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.link {
+  overflow-wrap: anywhere;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+}
+
+.media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+.media img,
+.media video {
+  width: 100%;
+  max-height: 28rem;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--ink);
+}
+
+.card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: white;
+}
+
+.notice {
+  padding: var(--space-3) var(--space-4);
+  border-radius: 6px;
+  background: var(--glacier-wash);
+}
+
+/* A status in words, for reports with no verdict yet. */
+.chip {
+  justify-self: start;
+  padding: 0 var(--space-2);
+  border-radius: 4px;
+  background: var(--glacier-wash);
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+
+.chip span {
+  font-weight: 400;
+}
+
+.chip[data-size="large"] {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-read);
+  font-size: var(--step-1);
+}
+
+.stepTime {
+  display: block;
+  font-size: var(--step--1);
+  font-weight: 400;
+  color: var(--silt);
+}
+
+/* Home: the four steps of a check, side by side where there is room. */
+.journey {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: journey;
+}
+
+.journey li {
+  counter-increment: journey;
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: white;
+}
+
+.journey li::before {
+  content: counter(journey, devanagari);
+  display: block;
+  font-family: var(--font-read);
+  font-size: var(--step-2);
+  color: var(--glacier);
+  line-height: 1.2;
 }
 
 /* Progress reads like water moving down a channel: done steps filled, the current one live. */
@@ -344,19 +516,42 @@
   border-radius: 6px;
   background: white;
   color: var(--ink);
-  text-align: left;
-  cursor: pointer;
+  text-decoration: none;
 }
 
 .item:hover {
   border-color: var(--ink-soft);
 }
 
-.itemId {
+.item[aria-current="page"] {
+  border-color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.list[data-cards] {
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+}
+
+.list[data-cards] .item {
+  height: 100%;
+  align-content: start;
+}
+
+.list[data-compact] .item {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--step--1);
+}
+
+.itemTitle {
   font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .itemText {
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

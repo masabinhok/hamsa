@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, site, type CaseStatus, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
@@ -12,8 +12,6 @@ import styles from "../app/site.module.css";
 const MAX_FILES = 4;
 const MAX_FILES_NE = "४";
 const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
-const POLL_MS = 5000;
-const FINAL: CaseStatus[] = ["published", "rejected", "merged"];
 const MINE_KEY = "hamsa.reports";
 const MINE_MAX = 20;
 
@@ -58,35 +56,14 @@ function remember(id: string) {
   mineListeners.forEach((listener) => listener());
 }
 
-const steps: [string, string][] = [
+export const steps: [string, string][] = [
   ["पठाइयो", "Sent"],
   ["Hamsa ले पोस्ट पढ्दै र प्रमाण खोज्दैछ", "Hamsa reads the post and looks for evidence"],
   ["तथ्य जाँचकर्ताले हेर्दै हुनुहुन्छ", "A fact-checker reviews it"],
   ["निर्णय प्रकाशित", "Verdict published"],
 ];
 
-// Which step a status has reached; merged and rejected replace the step they end on.
-const reached: Record<CaseStatus, number> = {
-  received: 0,
-  processing: 1,
-  routed: 2,
-  merged: 2,
-  published: 3,
-  rejected: 3,
-};
-
-const endings: Partial<Record<CaseStatus, [string, string]>> = {
-  merged: [
-    "यो पोस्ट पहिले नै कसैले पठाइसक्नुभएको छ। त्यही रिपोर्टमा जाँच भइरहेको छ।",
-    "Someone already sent this post. It is being checked under that report.",
-  ],
-  rejected: [
-    "निर्णय प्रकाशित भएन: पोस्टमा जाँच्न मिल्ने तथ्यगत दाबी छैन।",
-    "No verdict was published: the post makes no factual claim that can be checked.",
-  ],
-};
-
-const shortStatus: Record<CaseStatus, [string, string]> = {
+export const shortStatus: Record<CaseStatus, [string, string]> = {
   received: ["पठाइयो", "Sent"],
   processing: ["पढ्दैछ", "Reading"],
   routed: ["जाँच हुँदैछ", "Being checked"],
@@ -95,40 +72,57 @@ const shortStatus: Record<CaseStatus, [string, string]> = {
   rejected: ["दाबी छैन", "No claim"],
 };
 
-export function Site() {
-  // The URL is the selection, so back and forward move between reports.
-  const match = /^\/check\/([^/]+)/.exec(usePathname());
-  const selected = match ? decodeURIComponent(match[1]) : null;
-  const mineRaw = useSyncExternalStore(subscribeMine, mineSnapshot, () => "[]");
+export function useMine(): string[] {
+  const raw = useSyncExternalStore(subscribeMine, mineSnapshot, () => "[]");
+  return parseMine(raw);
+}
 
-  // Swap the report on the right without reloading, so a half-filled form on the left survives.
-  function open(id: string) {
-    window.history.pushState(null, "", `/check/${encodeURIComponent(id)}`);
-  }
+// Public pages share one top bar, so a reader can always get back to sending or browsing.
+export function Masthead() {
+  return (
+    <header className={styles.masthead}>
+      <Link href="/" className={styles.brand}>
+        Hamsa <span className={styles.brandNe}>हंस</span>
+      </Link>
+      <nav className={styles.nav} aria-label="Hamsa">
+        <Link href="/">पोस्ट पठाउनुहोस् · Send a post</Link>
+        <Link href="/desk" lang="en" className={styles.deskLink}>
+          Checker desk
+        </Link>
+      </nav>
+    </header>
+  );
+}
+
+export function Site() {
+  const router = useRouter();
 
   function sent(id: string) {
     remember(id);
-    open(id);
+    router.push(`/check/${encodeURIComponent(id)}`);
   }
 
   return (
-    <div className={styles.site} lang="ne" data-open={selected ? "" : undefined}>
+    <div className={styles.site} lang="ne">
+      <Masthead />
       <section className={styles.sendPane} aria-labelledby="send-title">
         <SendForm onSent={sent} />
       </section>
-      <section className={styles.statusPane} aria-label="Status · स्थिति">
-        {selected ? (
-          <Status key={selected} id={selected} />
-        ) : (
-          <p className={styles.empty}>
-            <Both
-              ne="पोस्ट पठाएपछि यसको जाँच कहाँ पुग्यो, यहाँ देखिन्छ।"
-              en="Once you send a post, you can follow its check here."
-            />
-          </p>
-        )}
-        <Mine raw={mineRaw} selected={selected} onOpen={open} />
-        <Recent selected={selected} onOpen={open} />
+      <section className={styles.statusPane} aria-label="Reports · रिपोर्टहरू">
+        <section className={styles.group} aria-labelledby="after">
+          <h2 id="after" className={styles.heading}>
+            <Both ne="पठाएपछि के हुन्छ" en="What happens after you send" />
+          </h2>
+          <ol className={styles.journey}>
+            {steps.map(([ne, en]) => (
+              <li key={en}>
+                <Both ne={ne} en={en} />
+              </li>
+            ))}
+          </ol>
+        </section>
+        <Mine />
+        <Recent />
       </section>
     </div>
   );
@@ -181,9 +175,6 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
   return (
     <>
       <header className={styles.header}>
-        <Link href="/" className={styles.brand}>
-          Hamsa <span className={styles.brandNe}>हंस</span>
-        </Link>
         <h1 id="send-title" className={styles.title}>
           विपद्‌बारे शंकास्पद पोस्ट देख्नुभयो?
         </h1>
@@ -232,169 +223,62 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
   );
 }
 
-function usePublicCase(id: string) {
-  const [current, setCurrent] = useState<PublicCase | null>(null);
-  const [missing, setMissing] = useState(false);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let stopped = false;
-    const load = () =>
-      site.case(id).then(
-        (found) => {
-          if (stopped) return;
-          setCurrent(found);
-          if (!FINAL.includes(found.status)) timer = setTimeout(load, POLL_MS);
-        },
-        (failure) => {
-          if (stopped) return;
-          if (failure instanceof ApiError && failure.status === 404) setMissing(true);
-          else timer = setTimeout(load, POLL_MS);
-        },
-      );
-    load();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [id]);
-
-  return { current, missing };
+function date(iso: string): string {
+  return new Date(iso).toLocaleDateString("ne-NP", { day: "numeric", month: "short" });
 }
 
-function Status({ id }: { id: string }) {
-  const { current, missing } = usePublicCase(id);
-  const verdict = current?.verdict;
-  const step = current ? reached[current.status] : -1;
-  const ending = current ? endings[current.status] : undefined;
-
-  return (
-    <article className={styles.status} aria-live="polite">
-      <p className={styles.quiet}>
-        <Both
-          ne={`रिपोर्ट नं. ${id}। यो पेजको लिंक राखे पछि फेरि हेर्न सकिन्छ।`}
-          en={`Report ${id}. Keep this page's link to come back to it.`}
-        />
-      </p>
-
-      {missing && (
-        <p className={styles.error} role="alert">
-          <Both ne="यो नम्बरको कुनै रिपोर्ट छैन।" en="There is no report with this number." />
-        </p>
-      )}
-      {!missing && !current && <p className={styles.quiet}>लोड हुँदैछ… Loading…</p>}
-
-      {current && !verdict && (
-        <ol className={styles.steps}>
-          {steps.map(([ne, en], index) => {
-            const last = index === step && ending;
-            return (
-              <li
-                key={en}
-                className={styles.step}
-                data-state={index < step || last ? "done" : index === step ? "now" : "later"}
-              >
-                <Both ne={last ? ending[0] : ne} en={last ? ending[1] : en} />
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {current?.needs_media && !verdict && (
-        <p className={styles.error}>
-          <Both
-            ne="हामी लिंक खोल्न सकेनौं (पोस्ट निजी वा हटाइएको हुन सक्छ)। कृपया फोटो वा भिडियो जोडेर बायाँबाट फेरि पठाउनुहोस्।"
-            en="We could not open the link (the post may be private or deleted). Please send it again from the form with the photo or video attached."
-          />
-        </p>
-      )}
-
-      {verdict && (
-        <>
-          <p className={styles.verdictLabel} data-label={verdict.label}>
-            {labelName[verdict.label].ne} <span lang="en">{labelName[verdict.label].en}</span>
-          </p>
-          <p className={styles.rationale}>{verdict.rationale_ne}</p>
-          <p className={styles.rationaleEn} lang="en">
-            {verdict.rationale_en}
-          </p>
-          {verdict.sources.length > 0 && (
-            <div className={styles.sources}>
-              <h2 className={styles.heading}>
-                <Both ne="स्रोतहरू" en="Sources" />
-              </h2>
-              <ul className={styles.list}>
-                {verdict.sources.map((source) => (
-                  <li key={source.url}>
-                    <a href={source.url} target="_blank" rel="noreferrer">
-                      {source.name}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <p className={styles.quiet}>
-            <Both
-              ne={`तथ्य जाँचकर्ताहरूले प्रकाशित गरेको: ${new Date(verdict.published_at).toLocaleString("ne-NP")}`}
-              en={`Published ${new Date(verdict.published_at).toLocaleString("en-GB")} by the fact-checkers.`}
-            />
-          </p>
-        </>
-      )}
-    </article>
-  );
-}
-
-function Mine({
-  raw,
-  selected,
-  onOpen,
-}: {
-  raw: string;
-  selected: string | null;
-  onOpen: (id: string) => void;
-}) {
+// `compact` is the side list beside an open report; the home page shows cards.
+export function Mine({ selected = null, compact = false }: { selected?: string | null; compact?: boolean }) {
+  const ids = useMine();
+  const key = ids.join();
   const [found, setFound] = useState<Record<string, PublicCase>>({});
 
-  // Keyed on the raw string: a parsed array would be a new dependency on every render.
+  // Keyed on the joined ids: the array itself is new on every render. Re-read on navigation
+  // so the statuses beside an open report stay current.
   useEffect(() => {
-    parseMine(raw).forEach((id) =>
-      site.case(id).then(
-        (item) => setFound((all) => ({ ...all, [id]: item })),
-        () => undefined,
-      ),
-    );
-  }, [raw, selected]);
+    key
+      .split(",")
+      .filter(Boolean)
+      .forEach((id) =>
+        site.case(id).then(
+          (item) => setFound((all) => ({ ...all, [id]: item })),
+          () => undefined,
+        ),
+      );
+  }, [key, selected]);
 
-  const others = parseMine(raw).filter((id) => id !== selected);
-  if (others.length === 0) return null;
+  if (ids.length === 0) return null;
   return (
     <section className={styles.group} aria-labelledby="mine">
       <h2 id="mine" className={styles.heading}>
         <Both ne="तपाईंले पठाएका" en="Sent from this browser" />
       </h2>
-      <ul className={styles.list}>
-        {others.map((id) => {
+      <ul className={styles.list} data-compact={compact ? "" : undefined}>
+        {ids.map((id) => {
           const item = found[id];
           const label = item?.verdict?.label;
           return (
             <li key={id}>
-              <button type="button" className={styles.item} onClick={() => onOpen(id)}>
-                <span className={styles.itemId} lang="en">
-                  {id}
-                </span>
+              <Link
+                href={`/check/${encodeURIComponent(id)}`}
+                className={styles.item}
+                aria-current={id === selected ? "page" : undefined}
+              >
                 {label ? (
                   <span className={styles.pill} data-label={label}>
                     {labelName[label].ne} <span lang="en">{labelName[label].en}</span>
                   </span>
                 ) : item ? (
-                  <span className={styles.quiet}>
+                  <span className={styles.chip}>
                     {shortStatus[item.status][0]} <span lang="en">{shortStatus[item.status][1]}</span>
                   </span>
                 ) : null}
-              </button>
+                <span className={styles.itemText}>{item?.text ?? item?.source_url ?? id}</span>
+                <span className={styles.quiet} lang="en">
+                  {id}
+                  {item && ` · ${date(item.created_at)}`}
+                </span>
+              </Link>
             </li>
           );
         })}
@@ -403,31 +287,55 @@ function Mine({
   );
 }
 
-function Recent({ selected, onOpen }: { selected: string | null; onOpen: (id: string) => void }) {
-  const [recent, setRecent] = useState<PublicCase[]>([]);
+export function Recent({
+  selected = null,
+  compact = false,
+}: {
+  selected?: string | null;
+  compact?: boolean;
+}) {
+  const [recent, setRecent] = useState<PublicCase[] | null>(null);
 
   useEffect(() => {
     site.verdicts().then(setRecent, () => setRecent([]));
   }, []);
 
-  const shown = recent.filter((item) => item.verdict && item.id !== selected).slice(0, 10);
-  if (shown.length === 0) return null;
+  const shown = (recent ?? []).filter((item) => item.verdict).slice(0, compact ? 30 : 12);
   return (
     <section className={styles.group} aria-labelledby="recent">
       <h2 id="recent" className={styles.heading}>
         <Both ne="भर्खरै जाँचिएका" en="Recently checked" />
       </h2>
-      <ul className={styles.list}>
+      {recent !== null && shown.length === 0 && (
+        <p className={styles.empty}>
+          <Both
+            ne="अहिलेसम्म कुनै निर्णय प्रकाशित भएको छैन। जाँचिएका पोस्टहरू यहाँ देखिनेछन्।"
+            en="No verdicts published yet. Checked posts will appear here."
+          />
+        </p>
+      )}
+      <ul
+        className={styles.list}
+        data-cards={compact ? undefined : ""}
+        data-compact={compact ? "" : undefined}
+      >
         {shown.map((item) =>
           item.verdict ? (
             <li key={item.id}>
-              <button type="button" className={styles.item} onClick={() => onOpen(item.id)}>
+              <Link
+                href={`/check/${encodeURIComponent(item.id)}`}
+                className={styles.item}
+                aria-current={item.id === selected ? "page" : undefined}
+              >
                 <span className={styles.pill} data-label={item.verdict.label}>
-                  {labelName[item.verdict.label].ne}{" "}
-                  <span lang="en">{labelName[item.verdict.label].en}</span>
+                  {labelName[item.verdict.label].ne} <span lang="en">{labelName[item.verdict.label].en}</span>
                 </span>
-                <span className={styles.itemText}>{item.verdict.rationale_ne}</span>
-              </button>
+                <span className={styles.itemTitle}>
+                  {item.verdict.claim?.claim ?? item.text ?? item.verdict.rationale_ne}
+                </span>
+                {!compact && <span className={styles.itemText}>{item.verdict.rationale_ne}</span>}
+                <span className={styles.quiet}>{date(item.verdict.published_at)}</span>
+              </Link>
             </li>
           ) : null,
         )}
