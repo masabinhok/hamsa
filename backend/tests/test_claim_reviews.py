@@ -49,6 +49,7 @@ def test_reviews_become_fact_check_passages() -> None:
 
 def test_english_claim_and_on_screen_text_are_searched() -> None:
     queries = review_queries(claim(visible_text=["Columbia Glacier", "2019"]))
+    # The claim has 5 words, so its 12-, 8- and 5-word queries are one.
     assert queries == ["Melamchi bazaar was swept away", "Columbia Glacier 2019"]
 
 
@@ -90,3 +91,36 @@ def test_reviews_go_first_without_duplicates_and_evidence_stays_at_eight() -> No
     assert ids[:MAX_REVIEWS] == ["fc-b", "fc-c"]
     assert len(ids) == 8
     assert "p0" in ids
+
+
+def test_long_claims_are_searched_by_their_opening_words() -> None:
+    long_claim = "one two three four five six seven eight nine ten eleven twelve thirteen"
+    assert review_queries(claim(claim_en=long_claim)) == [
+        "one two three four five six seven eight nine ten eleven twelve",
+        "one two three four five six seven eight",
+        "one two three four five",
+    ]
+
+
+def test_a_review_found_by_several_queries_ranks_first() -> None:
+    def review(n: int) -> dict[str, object]:
+        return {"publisher": {"name": f"P{n}"}, "url": f"https://fc.example/{n}"}
+
+    # Review 2 is second for every query; review 1 tops only the first.
+    pages = {
+        "one two three four five six seven eight nine ten eleven twelve": [1, 2],
+        "one two three four five six seven eight": [3, 2],
+        "one two three four five": [4, 2],
+    }
+
+    def api(request: httpx.Request) -> httpx.Response:
+        found = pages[request.url.params["query"]]
+        return httpx.Response(
+            200, json={"claims": [{"text": "x", "claimReview": [review(n) for n in found]}]}
+        )
+
+    search = ClaimReviewSearch(KEY, httpx.Client(transport=httpx.MockTransport(api)))
+    words = "one two three four five six seven eight nine ten eleven twelve thirteen"
+    ranked = [str(p.url) for p in search(claim(claim_en=words))]
+    assert ranked[0] == "https://fc.example/2"
+    assert sorted(ranked) == [f"https://fc.example/{n}" for n in (1, 2, 3, 4)]
