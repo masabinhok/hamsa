@@ -1,8 +1,92 @@
+/* Two halves: what the desk is, on the river's dark ink, and the way in. */
 .page {
   min-height: 100dvh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Phones: the way in first; the explanation follows for whoever scrolls. */
+.formSide {
+  order: -1;
+}
+
+@media (min-width: 52rem) {
+  .page {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+  }
+
+  .formSide {
+    order: 0;
+  }
+}
+
+.intro {
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-7) var(--space-6);
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.intro > * {
+  max-width: 34rem;
+}
+
+.brand {
+  font-family: var(--font-read);
+  font-size: var(--step-1);
+  font-weight: 600;
+  color: var(--glacier);
+}
+
+.title {
+  font-family: var(--font-read);
+  font-weight: 600;
+  font-size: var(--step-3);
+  line-height: 1.15;
+}
+
+.lede {
+  color: var(--glacier-wash);
+  line-height: 1.6;
+}
+
+.points {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--glacier-wash);
+}
+
+.points strong {
+  color: var(--milk);
+}
+
+.stat {
+  color: var(--glacier-wash);
+}
+
+.statNumber {
+  font-family: var(--font-read);
+  font-size: var(--step-2);
+  font-weight: 600;
+  color: var(--milk);
+  font-variant-numeric: tabular-nums;
+}
+
+.back {
+  justify-self: start;
+  color: var(--glacier);
+  text-underline-offset: 0.2em;
+}
+
+.formSide {
+  display: grid;
   place-items: center;
-  padding: var(--space-5);
+  padding: var(--space-7) var(--space-5);
 }
 
 .form {
@@ -11,15 +95,15 @@
   gap: var(--space-4);
 }
 
-.title {
+.formTitle {
   font-family: var(--font-read);
+  font-size: var(--step-2);
   font-weight: 600;
-  font-size: var(--step-3);
-  line-height: 1.1;
 }
 
-.lede {
-  color: var(--ink-soft);
+.hint {
+  color: var(--silt);
+  font-size: var(--step--1);
 }
 
 .field {
@@ -29,10 +113,55 @@
 }
 
 .field input {
+  min-width: 0;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: white;
+  color: var(--ink);
+}
+
+/* The reveal button sits inside the field's border, so the pair reads as one control. */
+.codeRow {
+  display: flex;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: white;
+}
+
+.codeRow:focus-within {
+  outline: 2px solid var(--glacier);
+  outline-offset: 1px;
+}
+
+.codeRow input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  font-family: ui-monospace, monospace;
+}
+
+.reveal {
+  padding: 0 var(--space-3);
+  border: 0;
+  border-left: 1px solid var(--rule);
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--ink);
 }
 
 .error {
@@ -40,7 +169,7 @@
 }
 
 .submit {
-  justify-self: start;
+  min-height: 44px;
   padding: var(--space-2) var(--space-5);
   border: 0;
   border-radius: 4px;
@@ -48,6 +177,10 @@
   color: var(--milk);
   font-weight: 600;
   cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--ink-soft);
 }
 
 .submit:disabled {
