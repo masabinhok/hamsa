@@ -135,11 +135,21 @@ export interface PublishedVerdict {
   rationale_ne: string;
   sources: { name: string; url: string; stance: Stance }[];
   published_at: string;
+  claim: Pick<Claim, "claim" | "claim_en" | "places" | "claimed_date"> | null;
+  earlier_footage: Pick<ArchiveHit, "archive_label" | "original_context" | "original_date" | "source_url">[];
+  media: string[];
 }
 
 export interface PublicCase {
   id: string;
   status: CaseStatus;
+  created_at: string;
+  text: string | null;
+  source_url: string | null;
+  media_count: number;
+  // Status changes only: who decided and why stay on the desk.
+  timeline: { at: string; status: CaseStatus }[];
+  merged_into: string | null;
   verdict: PublishedVerdict | null;
   needs_media: boolean;
 }
@@ -149,6 +159,9 @@ export const site = {
   submit: (form: FormData) => request<{ id: string }>("/cases", { method: "POST", body: form }),
   case: (id: string) => request<PublicCase>(`/cases/${encodeURIComponent(id)}`),
   verdicts: () => request<PublicCase[]>("/verdicts"),
+  // Served only once a checker has published the report.
+  mediaUrl: (id: string, name: string) =>
+    `${API_URL}/cases/${encodeURIComponent(id)}/media/${encodeURIComponent(name)}`,
 };
 
 export const desk = {
