@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from app.config import get_settings
 from app.eval.dataset import load_items
 from app.eval.score import EVAL_DIR, RUNS_DIR
-from app.pipeline.claim_reviews import ClaimReviewSearch
+from app.pipeline.claim_reviews import MAX_REVIEWS, ClaimReviewSearch
 from app.pipeline.contracts import Claim
 
 
@@ -28,7 +28,7 @@ def main() -> int:
         return 1
     search = ClaimReviewSearch(settings.fact_check_api_key.get_secret_value())
 
-    exact = same_publisher = anything = total = 0
+    exact = same_publisher = anywhere = total = 0
     for item in load_items(EVAL_DIR / "items.csv"):
         if item.fact_check_url is None:
             continue
@@ -43,17 +43,20 @@ def main() -> int:
         wanted = _key(str(item.fact_check_url))
         found = search(Claim.model_validate(claim_data))
         keys = [_key(str(p.url)) for p in found]
-        hit = wanted in keys
-        publisher = any(k.split("/")[0] == wanted.split("/")[0] for k in keys)
+        # Only the top reviews enter the evidence; lower ones never reach the verdict.
+        used = keys[:MAX_REVIEWS]
+        hit = wanted in used
+        publisher = any(k.split("/")[0] == wanted.split("/")[0] for k in used)
         exact += hit
         same_publisher += publisher
-        anything += bool(found)
-        mark = "found" if hit else "same publisher" if publisher else f"{len(found)} other"
+        anywhere += wanted in keys
+        mark = "used" if hit else "same publisher" if publisher else f"{len(found)} other"
         print(f"{item.id}: {mark}  ({wanted.split('/')[0]})")
 
     print(
-        f"\n{total} items with a fact-check: exact {exact}, same publisher {same_publisher}, "
-        f"any result {anything}"
+        f"\n{total} items with a fact-check: the right one in the evidence {exact}, "
+        f"same publisher in the evidence {same_publisher}, found but ranked lower "
+        f"{anywhere - exact}"
     )
     return 0
 
