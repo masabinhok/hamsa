@@ -14,23 +14,27 @@ import httpx
 from pydantic import ValidationError
 
 from app.pipeline.contracts import Claim, Evidence, Passage, SourceKind
-from app.pipeline.retrieve import MAX_PASSAGES
+from app.pipeline.retrieve import MAX_PASSAGES, RRF_K
 
 API = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-PAGE_SIZE = 5
+PAGE_SIZE = 10
 MAX_REVIEWS = 2  # of the 8 evidence slots; the rest stay with the trusted corpus
 QUERY_CHARS = 300
+# The index matches keywords, so a whole claim sentence finds almost nothing. On the
+# eval (2026-10-20) full sentences found 1 of 19 fact-checks; 12, 8 and 5 words each
+# found different ones, so all three are searched and their rankings fused.
+QUERY_WORDS = (12, 8, 5)
 log = logging.getLogger("hamsa.claim_reviews")
 
 FindReviews = Callable[[Claim], list[Passage]]
 
 
 def review_queries(claim: Claim) -> list[str]:
-    """The English claim, and the on-screen text, which often names the true origin.
-
-    Fact-checkers abroad write in English, so the Nepali claim is not searched.
+    """The English claim's opening words, and the on-screen text, which often names the
+    true origin. Fact-checkers abroad write in English, so the Nepali claim is not searched.
     """
-    queries = [claim.claim_en[:QUERY_CHARS]]
+    words = claim.claim_en.split()
+    queries = [" ".join(words[:n])[:QUERY_CHARS] for n in QUERY_WORDS]
     if claim.visible_text:
         queries.append(" ".join(claim.visible_text)[:QUERY_CHARS])
     return list(dict.fromkeys(q for q in queries if q.strip()))
@@ -74,7 +78,9 @@ class ClaimReviewSearch:
         self._headers = {"X-Goog-Api-Key": api_key}
 
     def __call__(self, claim: Claim) -> list[Passage]:
+        """Reviews ranked by reciprocal rank fusion, so one found by several queries leads."""
         found: dict[str, Passage] = {}
+        scores: dict[str, float] = {}
         for query in review_queries(claim):
             try:
                 response = self._http.get(
@@ -85,9 +91,11 @@ class ClaimReviewSearch:
             except (httpx.HTTPError, ValueError) as error:
                 log.warning("fact-check search failed: %s", type(error).__name__)
                 break
-            for passage in passages:
-                found.setdefault(str(passage.url), passage)
-        return list(found.values())
+            for rank, passage in enumerate(passages):
+                url = str(passage.url)
+                found.setdefault(url, passage)
+                scores[url] = scores.get(url, 0.0) + 1.0 / (RRF_K + rank + 1)
+        return [found[url] for url in sorted(found, key=lambda u: scores[u], reverse=True)]
 
 
 def add_reviews(evidence: Evidence, reviews: list[Passage]) -> Evidence:
