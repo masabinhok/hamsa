@@ -63,6 +63,8 @@ from app.store.cases import (
 from app.store.models import Case, CaseEvent, CaseStatus, Channel, Checker
 
 SUBMISSIONS_PER_MINUTE = 10  # per client IP; a fact-check desk is not a bulk API
+# Checker codes are unguessable, but the operator picks DESK_TOKEN and may pick a weak one.
+FAILED_SIGN_INS_PER_MINUTE = 10
 MAX_FILES = 4
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_TEXT_CHARS = 5000
@@ -104,11 +106,19 @@ def require_checker(
         )
     if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code required")
+    failures: RateLimiter = request.app.state.failed_sign_ins
+    client, now = client_ip(request), time.monotonic()
+    # Checked before the code, so a blocked guesser learns nothing even from a right guess.
+    if failures.exceeded(client, now):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "too many wrong codes, wait a minute"
+        )
     code = authorization.removeprefix("Bearer ")
     if token is not None and secrets.compare_digest(code, token.get_secret_value()):
         return None
     if name := signed_in(session, code):
         return name
+    failures.allow(client, now)  # records the failure
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code not recognised")
 
 
@@ -119,20 +129,26 @@ class RateLimiter:
         self.limit, self.window_s = limit, window_s
         self._hits: dict[str, deque[float]] = defaultdict(deque)
 
-    def allow(self, key: str, now: float) -> bool:
+    def exceeded(self, key: str, now: float) -> bool:
         hits = self._hits[key]
         while hits and hits[0] <= now - self.window_s:
             hits.popleft()
-        if len(hits) >= self.limit:
+        return len(hits) >= self.limit
+
+    def allow(self, key: str, now: float) -> bool:
+        if self.exceeded(key, now):
             return False
-        hits.append(now)
+        self._hits[key].append(now)
         return True
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 def limit_submissions(request: Request) -> None:
     limiter: RateLimiter = request.app.state.limiter
-    client = request.client.host if request.client else "unknown"
-    if not limiter.allow(client, time.monotonic()):
+    if not limiter.allow(client_ip(request), time.monotonic()):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many submissions, wait a minute"
         )
@@ -299,6 +315,7 @@ def create_app(
     app.state.db, app.state.media_root, app.state.desk_token = db, media_root, desk_token
     app.state.data_root = data_root
     app.state.limiter = RateLimiter(SUBMISSIONS_PER_MINUTE)
+    app.state.failed_sign_ins = RateLimiter(FAILED_SIGN_INS_PER_MINUTE)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[origin],

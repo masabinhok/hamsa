@@ -346,3 +346,13 @@ def test_a_merged_report_points_to_the_report_it_joined(client: TestClient, db: 
     with db.session.begin() as session:
         session.get_one(Case, "c2").merged_into = "c1"
     assert client.get("/cases/c2").json()["merged_into"] == "c1"
+
+
+def test_wrong_codes_are_throttled_per_client(db: Database, tmp_path: Path) -> None:
+    app = create_app(db, tmp_path, SecretStr(TOKEN), "http://localhost:3000")
+    guesser = TestClient(app, client=("1.2.3.4", 1))
+    wrong = {"Authorization": "Bearer guess"}
+    codes = [guesser.get("/desk/me", headers=wrong).status_code for _ in range(11)]
+    assert codes == [401] * 10 + [429]
+    assert guesser.get("/desk/me", headers=AUTH).status_code == 429  # even the right code
+    assert TestClient(app, client=("5.6.7.8", 1)).get("/desk/me", headers=AUTH).status_code == 200
