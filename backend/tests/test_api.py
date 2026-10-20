@@ -8,7 +8,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from app.api.main import RateLimiter, create_app, sniff_suffix
-from app.store.cases import Database
+from app.store.cases import Database, claim_job, complete_job
 from app.store.models import Case
 from tests.factories import cite, hit, outputs, passage, verdict
 from tests.images import photo
@@ -65,12 +65,13 @@ def test_submit_text_and_image(client: TestClient, tmp_path: Path) -> None:
     case_id = response.json()["id"]
     [stored] = (tmp_path / "media" / case_id).iterdir()
     assert stored.suffix == ".jpg"  # from the bytes, not the client's file name
-    assert client.get(f"/cases/{case_id}").json() == {
-        "id": case_id,
-        "status": "received",
-        "verdict": None,
-        "needs_media": False,
-    }
+    public = client.get(f"/cases/{case_id}").json()
+    assert public["status"] == "received"
+    assert public["text"] == "रसुवामा हिमताल फुट्यो"
+    assert public["source_url"] == "https://facebook.com/post/1"
+    assert public["media_count"] == 1
+    assert [step["status"] for step in public["timeline"]] == ["received"]
+    assert public["verdict"] is None
 
 
 @pytest.mark.parametrize(
@@ -104,7 +105,9 @@ def test_unknown_case_is_404(client: TestClient) -> None:
 def test_public_view_never_shows_the_model_draft(client: TestClient, db: Database) -> None:
     add_routed_case(db, "c1")
     body = client.get("/cases/c1").json()
-    assert body == {"id": "c1", "status": "routed", "verdict": None, "needs_media": False}
+    assert body["status"] == "routed"
+    assert body["verdict"] is None
+    assert not {"outputs", "decision", "reasons", "proposed_label", "claim_en"} & set(body)
 
 
 # desk
@@ -301,3 +304,45 @@ def test_desk_works_with_checker_accounts_alone(db: Database, tmp_path: Path) ->
         code = add(session, "Sita")
     response = TestClient(app).get("/desk/queue", headers={"Authorization": f"Bearer {code}"})
     assert response.status_code == 200
+
+
+def test_uploads_and_readings_are_public_only_once_published(
+    client: TestClient, db: Database
+) -> None:
+    case_id = client.post("/cases", files=[("files", ("a.jpg", jpeg(), "image/jpeg"))]).json()["id"]
+    [name] = client.get(f"/desk/cases/{case_id}", headers=AUTH).json()["media"]
+    assert client.get(f"/cases/{case_id}/media/{name}").status_code == 404  # not reviewed yet
+
+    result = routed_result(outputs(hits=[hit(), hit(frame_index=3)]))
+    with db.session.begin() as session:
+        claimed = claim_job(session)
+        assert claimed is not None
+        case = session.get_one(Case, case_id)
+        complete_job(session, claimed[0], case, result.outputs, result.decision, result.seconds)
+    assert client.get(f"/cases/{case_id}").json()["verdict"] is None
+    publish = {"action": "publish", "checker": "sita"}
+    client.post(f"/desk/cases/{case_id}/decision", headers=AUTH, json=publish)
+
+    public = client.get(f"/cases/{case_id}").json()
+    assert public["verdict"]["claim"]["claim_en"] == "Melamchi bazaar was swept away"
+    assert [f["original_context"] for f in public["verdict"]["earlier_footage"]] == [
+        "2023 Himachal Pradesh floods, Kullu"  # two frames of one archive item, shown once
+    ]
+    assert public["verdict"]["media"] == [name]
+    assert [step["status"] for step in public["timeline"]] == [
+        "received",
+        "processing",
+        "routed",
+        "published",
+    ]
+    assert "sita" not in str(public)  # checker names stay on the desk
+    assert client.get(f"/cases/{case_id}/media/{name}").status_code == 200
+    assert client.get(f"/cases/{case_id}/media/..%2F..%2Fhamsa.db").status_code == 404
+
+
+def test_a_merged_report_points_to_the_report_it_joined(client: TestClient, db: Database) -> None:
+    add_routed_case(db, "c1")
+    add_routed_case(db, "c2")
+    with db.session.begin() as session:
+        session.get_one(Case, "c2").merged_into = "c1"
+    assert client.get("/cases/c2").json()["merged_into"] == "c1"
