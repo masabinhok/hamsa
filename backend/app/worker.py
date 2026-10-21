@@ -42,6 +42,7 @@ from app.store.models import Case, Job, Lesson, Media, utcnow
 
 MAX_ATTEMPTS = 3
 MAX_CAPTION_CHARS = 5000  # the same limit as submitted text (MAX_TEXT_CHARS in the API)
+SENDER_NOTE = "Sender's note: "  # the extraction prompt reads text after this as context
 BACKOFF = (timedelta(seconds=30), timedelta(minutes=2))
 POLL_S = 1.0
 
@@ -79,8 +80,10 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         case.media.extend(
             Media(filename=m.filename, sha256=m.sha256, size_bytes=m.size_bytes) for m in stored
         )
-        if not case.text and post.caption:
-            case.text = post.caption[:MAX_CAPTION_CHARS]
+        if post.caption:
+            caption = post.caption[:MAX_CAPTION_CHARS]
+            # The caption is what the post claims; the sender's words only frame it.
+            case.text = f"{caption}\n\n{SENDER_NOTE}{case.text}" if case.text else caption
     log.info("case %s: fetched %d file(s) from the link", case_id, len(stored))
 
 

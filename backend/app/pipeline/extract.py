@@ -17,7 +17,9 @@ from app.pipeline.contracts import Claim
 SYSTEM = """\
 You extract the factual claim from a social media post about a disaster in Nepal, for \
 fact-checkers. You do not judge whether it is true. Report only what the post states or \
-what is visibly present in the frames; never infer or add knowledge.
+what is visibly present in the frames; never infer or add knowledge. Text after \
+"Sender's note:" is from the person who reported the post, not the post: use it only \
+to read the post, never as the claim.
 
 Fields:
 - claim: the central factual assertion, in the post's original language and script. \
