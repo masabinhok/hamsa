@@ -158,8 +158,29 @@ def test_the_posts_caption_leads_and_the_senders_note_follows(db: Database, tmp_
     assert seen == ["बुढीगण्डकीमा बाढी\n\nSender's note: is this real?"]
 
 
-def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_path: Path) -> None:
+def test_a_post_that_could_not_be_opened_goes_to_a_checker_unread(
+    db: Database, tmp_path: Path
+) -> None:
     add_link_case(db, "c1")
+
+    def fetch(url: str, folder: Path) -> Downloaded:
+        raise subprocess.CalledProcessError(1, "yt-dlp", stderr="HTTP Error 404")
+
+    def runner(text: str | None, media: Sequence[Path]) -> Result:
+        raise AssertionError("no model may be asked about an empty post")
+
+    assert process_next(db, runner, tmp_path, fetch) == "c1"
+    with db.session() as session:
+        case = session.get_one(Case, "c1")
+        assert case.route == Route.HUMAN_REVIEW.value
+        assert case.decision is not None
+        [reason] = case.decision["reasons"]  # not "pipeline error": the runner never ran
+        assert "could not be opened" in reason
+
+
+def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, "रसुवामा बाढी", "https://x.com/a/status/1", [])
 
     def fetch(url: str, folder: Path) -> Downloaded:
         raise subprocess.CalledProcessError(1, "yt-dlp", stderr="login required")

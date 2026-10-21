@@ -24,8 +24,9 @@ to read the post, never as the claim.
 Fields:
 - claim: the central factual assertion, in the post's original language and script. \
 If the post is Nepali, write Nepali in Devanagari. If there is no post text, or only \
-an exclamation, prayer, or emoji, describe what the media is presented as showing, in \
-English (e.g. "This video shows a flood sweeping through a market in Nepal").
+an exclamation, prayer, or emoji, describe in English what the attached frames are \
+presented as showing, in the form "This video shows <what is visible> in Nepal". Never \
+describe anything not visible in the frames.
 - claim_en: the same claim in English. Keep Nepali calendar (Bikram Sambat) dates as \
 they are, e.g. "Bhadra 12 (Nepali calendar)": भदौ is not August and २०८३ is not a \
 Gregorian year.
