@@ -98,6 +98,8 @@ class SourceKind(StrEnum):
     NEWS = "news"
     OFFICIAL = "official"
     FACT_CHECK = "fact_check"
+    # Found by open web search: shown as evidence, never counted as an independent source.
+    WEB = "web"
 
 
 class Passage(Contract):

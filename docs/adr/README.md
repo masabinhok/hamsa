@@ -16,5 +16,6 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0010](0010-fetch-links-with-the-operators-browser-session.md) | Fetch pasted links with the operator's browser session | Accepted |
 | [0011](0011-archive-learns-from-verdicts.md) | The archive learns from verdicts, not from bulk downloads or web search | Accepted |
 | [0012](0012-search-fact-checks-published-abroad.md) | Search fact-checks published abroad through ClaimReview | Accepted |
+| [0013](0013-web-evidence-through-self-hosted-searxng.md) | Search the web for evidence about the event through self-hosted SearXNG | Accepted |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.
