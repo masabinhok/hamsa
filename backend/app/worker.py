@@ -24,6 +24,8 @@ from app.pipeline.contracts import (
     DuplicateBasis,
     Route,
     RouteDecision,
+    Stage,
+    StageFailure,
     VerdictLabel,
 )
 from app.pipeline.run import Result
@@ -42,6 +44,7 @@ from app.store.models import Case, Job, Lesson, Media, utcnow
 
 MAX_ATTEMPTS = 3
 MAX_CAPTION_CHARS = 5000  # the same limit as submitted text (MAX_TEXT_CHARS in the API)
+UNOPENED = "the post could not be opened; ask the sender for the photo or video"
 SENDER_NOTE = "Sender's note: "  # the extraction prompt reads text after this as context
 BACKOFF = (timedelta(seconds=30), timedelta(minutes=2))
 POLL_S = 1.0
@@ -109,6 +112,11 @@ def process_next(
         # The same file is already on the desk: merge without spending any model time.
         same = StageOutputs(duplicate=Duplicate(case_id=original, basis=DuplicateBasis.MEDIA))
         result = Result(outputs=same, decision=route(same))
+    elif not (text and text.strip()) and not paths:
+        # A model asked about an empty post invents one: "a flood sweeping through a
+        # market in Nepal" was checked, and fast-tracked, for an unopened Facebook post.
+        empty = StageOutputs(failures=(StageFailure(stage=Stage.INGEST, error=UNOPENED),))
+        result = Result(outputs=empty, decision=route(empty))
     else:
         try:
             result = runner(text, paths)
