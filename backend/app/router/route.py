@@ -157,12 +157,14 @@ def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> 
     if outputs.media_match is None:
         return []
     # A date the post itself claims wins: "the 2024 flood" with 2024 footage is not recycled.
-    claimed = outputs.claim.claimed_date if outputs.claim else None
+    claim = outputs.claim
+    claimed = claim.claimed_date if claim else None
     reference = claimed or outputs.seen_on
+    since = _claimed_year_start(claim.claimed_year) if claim and not claimed else None
     return [
         hit
         for hit in outputs.media_match.hits
-        if is_strong_match(hit, t) and _is_older_footage(hit, reference, t)
+        if is_strong_match(hit, t) and _is_older_footage(hit, reference, since, t)
     ]
 
 
@@ -173,11 +175,30 @@ def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool
     return by_hash or by_embedding or by_geometry
 
 
-def _is_older_footage(hit: ArchiveHit, reference: date | None, t: Thresholds) -> bool:
-    """Prior footage, or genuine footage of an earlier event resurfacing under a new claim."""
+def _claimed_year_start(year: int | None) -> date | None:
+    """First day of the claimed year. Bikram Sambat runs about 57 years ahead, so a year
+    past today's is BS, and BS years start in mid-April (Baisakh 1)."""
+    if year is None:
+        return None
+    if year > date.today().year:
+        return date(year - 57, 4, 1)  # shortcut: early April, a margin before Baisakh 1
+    return date(year, 1, 1)
+
+
+def _is_older_footage(
+    hit: ArchiveHit, reference: date | None, since: date | None, t: Thresholds
+) -> bool:
+    """Prior footage, or genuine footage of an earlier event resurfacing under a new claim.
+
+    Old footage the post itself dates correctly ("the 2082 flood") is not recycled.
+    """
     if hit.archive_label is ArchiveLabel.PRIOR:
         return True
-    if hit.original_date is None or reference is None:
+    if hit.original_date is None:
+        return False
+    if since is not None:
+        return hit.original_date < since
+    if reference is None:
         return False
     return (reference - hit.original_date).days > t.same_event_days
 
