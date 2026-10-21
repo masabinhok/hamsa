@@ -1,6 +1,6 @@
 """How often the fact-check search finds the fact-check behind each eval label.
 
-`uv run python -m app.eval.review_recall` from backend/ (needs FACT_CHECK_API_KEY).
+`uv run python -m app.eval.review_recall` from backend/ (needs FACT_CHECK_API_KEY and GROQ_API_KEY).
 Queries use the claim the pipeline extracted in the last scored run, so this measures
 what a live case would search for.
 """
@@ -12,7 +12,8 @@ from urllib.parse import urlsplit
 from app.config import get_settings
 from app.eval.dataset import load_items
 from app.eval.score import EVAL_DIR, RUNS_DIR
-from app.pipeline.claim_reviews import MAX_REVIEWS, ClaimReviewSearch
+from app.llm.groq import GroqClient
+from app.pipeline.claim_reviews import MAX_REVIEWS, ClaimReviewSearch, same_claim_only
 from app.pipeline.contracts import Claim
 
 
@@ -23,10 +24,15 @@ def _key(url: str) -> str:
 
 def main() -> int:
     settings = get_settings()
-    if settings.fact_check_api_key is None:
-        print("set FACT_CHECK_API_KEY in .env", file=sys.stderr)
+    if settings.fact_check_api_key is None or settings.groq_api_key is None:
+        print("set FACT_CHECK_API_KEY and GROQ_API_KEY in .env", file=sys.stderr)
         return 1
-    search = ClaimReviewSearch(settings.fact_check_api_key.get_secret_value())
+    # The same gate a live case passes, so a fact-check it wrongly drops shows as a miss.
+    gate = GroqClient(settings.groq_api_key.get_secret_value(), reasoning_effort="low")
+    search = same_claim_only(
+        ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()),
+        (gate, settings.checking_model),
+    )
 
     exact = same_publisher = anywhere = total = 0
     for item in load_items(EVAL_DIR / "items.csv"):

@@ -81,6 +81,7 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media |
 | Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing) | `retrieve` in `backend/app/pipeline/retrieve.py` → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
 | Verdict | gpt-oss-120b (Groq); fallback Qwen3-VL-8B (local) | `judge` in `backend/app/pipeline/verdict.py` → label, confidence, and cited passages with stances decide the fast-track, conflict, and human-review rules in `backend/app/router/route.py`; the Nepali rationale is the published explanation |
+| Fact-check relevance gate | gpt-oss-20b (Groq) | `same_claim_only` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.same_claim` decides which published fact-checks enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py` |
 | Nepali rationale check | gpt-oss-20b (Groq) | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
 
 ## Running locally
