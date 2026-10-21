@@ -82,7 +82,8 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing) | `retrieve` in `backend/app/pipeline/retrieve.py`, and `WebSearch._passage` in `backend/app/pipeline/web_search.py` for web pages (cosine decides whether a page is evidence) → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
 | Verdict | gpt-oss-120b (Groq); fallback Qwen3-VL-8B (local) | `judge` in `backend/app/pipeline/verdict.py` → label, confidence, and cited passages with stances decide the fast-track, conflict, and human-review rules in `backend/app/router/route.py`; the Nepali rationale is the published explanation |
 | Fact-check relevance gate | gpt-oss-20b (Groq) | `same_claim_only` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.same_claim` decides which published fact-checks enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py` |
-| Nepali rationale check | gpt-oss-20b (Groq) | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
+| Rationale translation | gpt-oss-120b (Groq) | `translate` in `backend/app/pipeline/verdict.py`, served by `POST /desk/translate` in `backend/app/api/main.py` → the Nepali rationale a checker publishes after editing the English; checked by the row below before it is shown |
+| Nepali rationale check | gpt-oss-20b (Groq) | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`, and the `issue` the desk shows after a translation; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
 
 ## Running locally
 

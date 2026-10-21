@@ -1,5 +1,6 @@
 import io
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -356,3 +357,49 @@ def test_wrong_codes_are_throttled_per_client(db: Database, tmp_path: Path) -> N
     assert codes == [401] * 10 + [429]
     assert guesser.get("/desk/me", headers=AUTH).status_code == 429  # even the right code
     assert TestClient(app, client=("5.6.7.8", 1)).get("/desk/me", headers=AUTH).status_code == 200
+
+
+# translation
+
+
+def translating_client(
+    db: Database, tmp_path: Path, *outcomes: dict[str, Any] | Exception
+) -> TestClient:
+    from tests.test_verdict import FakeReasoner
+
+    translator = FakeReasoner(*outcomes)
+    checker = FakeReasoner({"faithful": True, "problem": ""})
+    app = create_app(
+        db,
+        tmp_path / "media",
+        SecretStr(TOKEN),
+        "http://localhost:3000",
+        tmp_path / "data",
+        translator=(translator, "translate-model"),
+        nepali_checker=(checker, "check-model"),
+    )
+    return TestClient(app)
+
+
+def test_a_checkers_english_is_translated_and_checked(db: Database, tmp_path: Path) -> None:
+    client = translating_client(db, tmp_path, {"nepali": "भिडियो अलास्काको हो।"})
+    response = client.post(
+        "/desk/translate", json={"english": "The video is from Alaska."}, headers=AUTH
+    )
+    assert response.status_code == 200
+    assert response.json() == {"nepali": "भिडियो अलास्काको हो।", "issue": None}
+
+
+def test_a_failed_translation_asks_for_the_nepali_by_hand(db: Database, tmp_path: Path) -> None:
+    from app.llm.groq import ReasonerUnavailable
+
+    client = translating_client(db, tmp_path, ReasonerUnavailable("groq down"))
+    response = client.post("/desk/translate", json={"english": "The video is old."}, headers=AUTH)
+    assert response.status_code == 503
+    assert "by hand" in response.json()["detail"]
+
+
+def test_translation_needs_a_model_and_a_checker(client: TestClient) -> None:
+    unconfigured = client.post("/desk/translate", json={"english": "x"}, headers=AUTH)
+    assert unconfigured.status_code == 503
+    assert client.post("/desk/translate", json={"english": "x"}).status_code == 401
