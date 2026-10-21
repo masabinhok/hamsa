@@ -62,7 +62,9 @@ Archive matches: a strong match to "prior" footage means the media is older or f
 elsewhere, which is decisive for media presented as this incident. It is evidence in \
 its own right, from the fact-checkers' archive: decide on it even though it has no label \
 to cite and no passage repeats it, and name it in the rationale ("the footage matches \
-..."). Only frame matches are listed. No match says nothing about the claim: the archive \
+..."). A strong match to "verified_genuine" footage means the media is confirmed footage \
+of the event named there: it supports a post that presents it as that event. Only frame \
+matches are listed. No match says nothing about the claim: the archive \
 holds a small fraction of all footage, so never treat a missing match as evidence.
 
 citations: every passage your decision relies on, by its label, with its stance toward \
