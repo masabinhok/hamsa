@@ -173,6 +173,13 @@ export const desk = {
   me: (token: string) => call<{ name: string | null }>(token, "/desk/me"),
   queue: (token: string) => call<DeskSummary[]>(token, "/desk/queue"),
   case: (token: string, id: string) => call<DeskCase>(token, `/desk/cases/${id}`),
+  // Nepali for a checker's English rationale; `issue` says why to reread it, if anything.
+  translate: (token: string, english: string) =>
+    call<{ nepali: string; issue: string | null }>(token, "/desk/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ english }),
+    }),
   decide: (token: string, id: string, decision: Decision) =>
     call<DeskCase>(token, `/desk/cases/${id}/decision`, {
       method: "POST",
