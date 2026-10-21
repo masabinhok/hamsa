@@ -1,0 +1,8 @@
+# Self-hosted web search for evidence the trusted corpus lacks (backend/app/pipeline/web_search.py).
+use_default_settings: true
+server:
+  # Bound to localhost and queried only by Hamsa, so no bot limiter is needed.
+  limiter: false
+  image_proxy: false
+search:
+  formats: [html, json]

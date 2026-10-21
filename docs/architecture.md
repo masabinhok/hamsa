@@ -85,6 +85,7 @@ Each stage returns a Pydantic model. Model outputs are requested with a JSON sch
 | `claim_en` | str | retrieval (cross-lingual), verdict |
 | `places` | list of str | retrieval query, verdict |
 | `claimed_date` | date or null | "predates the incident" check |
+| `claimed_year` | int or null | the same check when only a year is stated, Gregorian or Bikram Sambat |
 | `numbers` | list of `{value, unit, refers_to}` | verdict (checks death tolls and similar) |
 | `visible_text` | list of str | retrieval, verdict |
 | `watermarks` | list of str | router (AI-tool marks such as Veo, Sora, Gemini) |
@@ -154,13 +155,14 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `
   - RSS feeds, which list only the latest items with a headline and lead: Techpana, Ratopati, and Setopati. Techpana items whose link contains "fact-check" are stored as fact-checks.
   - News is limited to disaster terms of any kind: बाढी, पहिरो, डुबान, हिमताल, भूकम्प, डढेलो, आगलागी, चट्याङ; flood, landslide, GLOF, inundation, earthquake, avalanche, wildfire.
   - Fact-checks are fetched from all time, because recycled clips are often debunked years earlier.
-  - **Fact-checks published abroad** (AFP, Boom, Alt News and others, which debunked 22 of the 33 eval posts labelled from a fact-check) are searched per case through Google's ClaimReview index when `FACT_CHECK_API_KEY` is set, with the English claim and the on-screen text. Up to 2 reviews not already in the corpus go first among the 8 passages ([ADR 0012](adr/0012-search-fact-checks-published-abroad.md), `backend/app/pipeline/claim_reviews.py`). A failed search leaves corpus evidence only. The index matches keywords, so the claim's first 12, 8 and 5 words are searched separately and the results fused by rank. **Measured 2026-10-20** (`python -m app.eval.review_recall`, 19 eval posts with a fact-check and an extracted claim): the right fact-check reached the evidence for 4, all 4 of those debunked abroad that the index holds (AFP twice, Boom, Alt News); whole-sentence queries had found 1. Vague posts ("This Nepal–Tibet flood video is real") draw unrelated reviews.
+  - **Fact-checks published abroad** (AFP, Boom, Alt News and others, which debunked 22 of the 33 eval posts labelled from a fact-check) are searched per case through Google's ClaimReview index when `FACT_CHECK_API_KEY` is set, with the English claim and the on-screen text. Up to 2 reviews not already in the corpus go first among the 8 passages ([ADR 0012](adr/0012-search-fact-checks-published-abroad.md), `backend/app/pipeline/claim_reviews.py`). A failed search leaves corpus evidence only. Since a keyword match is about the same disaster, not the same post (one Alt News roundup was cited against every flood post), gpt-oss-20b first judges each of the top 4 reviews against the post with the review's opening text, and drops any it cannot judge (`same_claim_only`; measured 2026-10-21: kept 5 of 7 right reviews, rejected the unrelated ones). The index matches keywords, so the claim's first 12, 8 and 5 words are searched separately and the results fused by rank. **Measured 2026-10-20** (`python -m app.eval.review_recall`, 19 eval posts with a fact-check and an extracted claim): the right fact-check reached the evidence for 4, all 4 of those debunked abroad that the index holds (AFP twice, Boom, Alt News); whole-sentence queries had found 1. Vague posts ("This Nepal–Tibet flood video is real") draw unrelated reviews.
+  - **The open web**, per case, through a self-hosted SearXNG news search when `SEARXNG_URL` is set (`backend/app/pipeline/web_search.py`). The top 6 results are fetched; a page counts only if it is dated inside the news window (figures change daily, so undated pages are dropped) and its best chunk scores bge-m3 cosine 0.6 or more against the claim (measured 2026-10-22: on-topic pages 0.67–0.76, off-topic 0.25–0.37). Up to 2 take the last evidence slots as `source_kind = web`. Web pages are untrusted: the verdict model is told to prefer a trusted passage, and the router never counts them as independent sources. On "403 tourists missing" it found "596 foreign tourists missing" (Business Insider, 28 Aug), the same-group figure the corpus lacked.
   - Other outlets block automated access or publish malformed feeds; any outlet with a WordPress API or an RSS feed is added with one line in `backend/app/corpus/fetch.py`.
 - **Corpus as of 2026-10-06:** 5,365 articles, 15,065 passages.
 - **Chunking:** paragraphs packed into chunks of at most 1,200 characters, splitting long paragraphs at sentence ends (`।` and `.`). The article title is prepended to each chunk before embedding.
 - **Indexing** is an offline batch job on the GPU, with 4 concurrent requests: about 19 passages/s, so roughly 14 minutes for the full corpus. The CPU would take about 2 hours at 2.2 passages/s. CPU and GPU embeddings are identical (cosine 1.0), so per-case queries run on the CPU against a GPU-built index.
 - **Queries:** three queries, merged with reciprocal rank fusion (k = 60): the original-language claim, the English claim, and the on-screen text. On-screen text often names the true origin, such as "Columbia Glacier".
-- **Recency:** news counts from 30 days before the date the claim is about (its stated date, else the day the post was seen), with no end date, since reports follow an event. Fact-checks of any date count. No deployment is tied to one disaster (`news_since` in `backend/app/pipeline/retrieve.py`).
+- **Recency:** news counts from 30 days before the date the claim is about (its stated date, else the post's upload date, else the day it was sent) until 14 days after it when the claim or the post is dated, since reports follow an event but later news is about later events. Fact-checks of any date count. No deployment is tied to one disaster (`news_since` in `backend/app/pipeline/retrieve.py`).
 - **Diversity:** at most 2 passages per article and 8 in total, so the verdict sees independent sources.
 - **Prior fact-checks:** fact-checker passages have `source_kind = fact_check`. A prior fact-check of the same claim is the strongest single evidence signal.
 
@@ -186,14 +188,18 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `
 | `confidence` | float from 0 to 1 | model self-report, used only alongside deterministic signals |
 | `rationale_en` | str, at most 120 words | shown on the desk |
 | `rationale_ne` | str | shown on the published verdict |
-| `citations` | list of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
+| `citations` | at most 3 of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
+| `media_finding` | `shows_claim`, `elsewhere`, `ai_generated`, `not_established`, `no_media` | router: a refuting label needs a contradicting finding |
+| `event_finding` | `confirmed`, `contradicted`, `not_found` | same |
+| `number_finding` | `consistent`, `contradicted`, `not_established`, `none_claimed` | same; `contradicted` needs the post's date |
 | `model` | str | which model produced it (Groq or fallback) |
 | `fallback` | bool | true when the local model judged because Groq was unavailable |
 | `nepali_issue` | str or null | why the Nepali rationale may not say what the English says, or that it could not be checked; null when gpt-oss-20b found it faithful |
 
 Implemented in `backend/app/pipeline/verdict.py`, with clients in `backend/app/llm/groq.py` and `backend/app/llm/ollama.py`.
 
-- **Evidence only.** The prompt gives the model the claim, the archive matches (each marked strong or weak using the router's rule), and the evidence passages with their headlines. It instructs `unverifiable` whenever the passages do not address this specific claim. The post and the passages are marked as data, so instructions inside them are ignored.
+- **Findings before the label.** The model records what it found about the media, the event, and the figures, then picks the label. A claim nothing supports was drafted `false` at 0.92 ("403 tourists missing": no report counted tourists), so the router checks the label against the findings. Figures are judged against reports from around the post's date, since counts change daily.
+- **Evidence only.** The prompt gives the model the claim, the post's date when known, the strong archive matches only (a weak one was read as evidence), and the evidence passages with their headlines. It instructs `unverifiable` whenever the passages do not address this specific claim. The post and the passages are marked as data, so instructions inside them are ignored.
 - **The implicit media claim.** A post with images or video claims that the media shows the event. The prompt tells the model to check that claim first: on-screen text naming another place, a fact-check of the same footage, or an archive match. On the real Rasuwa post this changed the verdict from "misleading, the cause is disputed" to "false, the video is from Columbia Glacier".
 - **Headlines.** Fact-check headlines usually state the verdict, so every passage is shown with its title.
 - **Citations cannot point at missing passages.** Passages are shown as `E1`..`E8`, and the JSON schema allows only those labels in `citations`, so under constrained decoding (Groq strict mode, Ollama `format`) an unseen passage cannot be cited. A post-parse check guards the same rule, plus the 120-word rationale limit; a violation gets one retry with the error shown.
@@ -241,6 +247,9 @@ flowchart TD
   - a `true` verdict with a strong `prior` hit
   - a `true` verdict with an AI-tool watermark
   - any cited passage whose stance contradicts the verdict
+  - a `true` verdict whose `media_finding` is `elsewhere` or `ai_generated`, or `not_established`: a real event does not vouch for unidentified footage
+  - a `false` or `misleading` verdict with no contradicting finding, strong `prior` hit, or watermark: absence of evidence is not a refutation
+  - a `contradicted` figure when neither the post nor its claim gives a date
 
 Notes:
 - **Thresholds are starting values** (`Thresholds` in the router). Model confidence is not calibrated, so they are tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.

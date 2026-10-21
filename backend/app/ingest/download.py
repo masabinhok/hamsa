@@ -1,4 +1,4 @@
-"""Download a post's media from its link with yt-dlp (ADR 0010).
+"""Download a post's media from its link with yt-dlp (ADR 0010), or its link preview.
 
 Shared by the worker, for pasted links, and the archive collector.
 """
@@ -7,8 +7,11 @@ import json
 import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 # Keyframes are capped at 6 per video, so footage past five minutes adds nothing.
 YTDLP = (
@@ -25,6 +28,9 @@ YTDLP = (
     "100M",
 )
 TIMEOUT_S = 300
+# Platforms serve the caption and picture behind a link preview to their own crawler, even
+# for posts yt-dlp cannot open: Facebook photo posts (404) and restricted reels.
+PREVIEW_AGENT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
 
 
 @dataclass(frozen=True)
@@ -53,9 +59,13 @@ def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
                 [*attempt, "--", url], check=True, capture_output=True, text=True, timeout=TIMEOUT_S
             )
             break
-        except subprocess.CalledProcessError:
-            if i == len(attempts) - 1:
-                raise
+        except subprocess.CalledProcessError as error:
+            if i < len(attempts) - 1:
+                continue
+            try:
+                return preview(url, folder)
+            except (httpx.HTTPError, ValueError):
+                raise error from None
     info = folder / "post.info.json"
     meta: dict[str, Any] = json.loads(info.read_text(encoding="utf-8")) if info.is_file() else {}
     caption: str | None = (meta.get("description") or meta.get("title") or "").strip() or None
@@ -66,4 +76,50 @@ def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
         caption=caption,
         title=meta.get("title"),
         uploaded=datetime.strptime(day, "%Y%m%d").date() if day else None,
+    )
+
+
+class _MetaTags(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.tags: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        found = dict(attrs)
+        key, content = found.get("property") or found.get("name"), found.get("content")
+        if tag == "meta" and key and content:
+            self.tags.setdefault(key, content)
+
+
+def meta_tags(markup: str) -> dict[str, str]:
+    """A page's <meta> properties (og:*, article:*), first value of each."""
+    parser = _MetaTags()
+    parser.feed(markup)
+    return parser.tags
+
+
+def preview(url: str, folder: Path, http: httpx.Client | None = None) -> Downloaded:
+    """The caption and picture of a post's link preview. For a video this is one still, so
+    a checker may still need the file. Raises when the page has neither."""
+    http = http or httpx.Client(
+        timeout=15, follow_redirects=True, headers={"User-Agent": PREVIEW_AGENT}
+    )
+    page = http.get(url)
+    page.raise_for_status()
+    tags = meta_tags(page.text)
+    caption = (tags.get("og:description") or "").strip() or None
+    files: list[Path] = []
+    if image_url := tags.get("og:image"):
+        image = http.get(image_url)
+        image.raise_for_status()
+        (folder / "preview.img").write_bytes(image.content)  # the worker sniffs its type
+        files.append(folder / "preview.img")
+    if caption is None and not files:
+        raise ValueError(f"no link preview at {url}")
+    published = tags.get("article:published_time")
+    return Downloaded(
+        files=files,
+        caption=caption,
+        title=tags.get("og:title"),
+        uploaded=datetime.fromisoformat(published).date() if published else None,
     )

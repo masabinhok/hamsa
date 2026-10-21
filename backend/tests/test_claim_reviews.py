@@ -1,14 +1,17 @@
 import httpx
 
+from app.llm.structured import StructuredOutputError
 from app.pipeline.claim_reviews import (
     MAX_REVIEWS,
     ClaimReviewSearch,
     add_reviews,
     parse,
     review_queries,
+    same_claim_only,
 )
-from app.pipeline.contracts import Evidence, SourceKind
+from app.pipeline.contracts import Claim, Evidence, Passage, SourceKind
 from tests.factories import claim, passage
+from tests.test_verdict import FakeReasoner
 
 KEY = "test-key"
 
@@ -124,3 +127,30 @@ def test_a_review_found_by_several_queries_ranks_first() -> None:
     ranked = [str(p.url) for p in search(claim(claim_en=words))]
     assert ranked[0] == "https://fc.example/2"
     assert sorted(ranked) == [f"https://fc.example/{n}" for n in (1, 2, 3, 4)]
+
+
+def test_only_reviews_judged_about_this_post_are_kept() -> None:
+    found = [passage(f"fc-{n}", f"Checker {n}", source_kind="fact_check") for n in range(6)]
+
+    def search(_: Claim) -> list[Passage]:
+        return found
+
+    def site(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/fc-0":
+            return httpx.Response(403)  # judged on its headline alone
+        return httpx.Response(200, text="<p>The video of the Columbia Glacier</p>")
+
+    judge = FakeReasoner(
+        {"same_claim": False, "why": "a roundup of other flood videos"},
+        StructuredOutputError("no json"),  # unjudged: dropped, never let through
+        {"same_claim": True, "why": "same Columbia Glacier footage"},
+        {"same_claim": True, "why": "same claim"},
+    )
+    http = httpx.Client(transport=httpx.MockTransport(site))
+    kept = same_claim_only(search, (judge, "gate-model"), http)(claim(visible_text=["Juneau"]))
+
+    assert [p.source for p in kept] == ["Checker 2", "Checker 3"]
+    assert len(judge.prompts) == MAX_REVIEWS + 2  # stops once the evidence slots are full
+    assert "Juneau" in judge.prompts[0]
+    assert "Article:" not in judge.prompts[0]
+    assert "Columbia Glacier" in judge.prompts[2]

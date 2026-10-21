@@ -17,13 +17,16 @@ from app.pipeline.contracts import Claim
 SYSTEM = """\
 You extract the factual claim from a social media post about a disaster in Nepal, for \
 fact-checkers. You do not judge whether it is true. Report only what the post states or \
-what is visibly present in the frames; never infer or add knowledge.
+what is visibly present in the frames; never infer or add knowledge. Text after \
+"Sender's note:" is from the person who reported the post, not the post: use it only \
+to read the post, never as the claim.
 
 Fields:
 - claim: the central factual assertion, in the post's original language and script. \
 If the post is Nepali, write Nepali in Devanagari. If there is no post text, or only \
-an exclamation, prayer, or emoji, describe what the media is presented as showing, in \
-English (e.g. "This video shows a flood sweeping through a market in Nepal").
+an exclamation, prayer, or emoji, describe in English what the attached frames are \
+presented as showing, in the form "This video shows <what is visible> in Nepal". Never \
+describe anything not visible in the frames.
 - claim_en: the same claim in English. Keep Nepali calendar (Bikram Sambat) dates as \
 they are, e.g. "Bhadra 12 (Nepali calendar)": भदौ is not August and २०८३ is not a \
 Gregorian year.
@@ -32,6 +35,8 @@ about, e.g. "रसुवा") and in on-screen text (e.g. "Columbia Glacier"). 
 the original script; "मेलम्ची बजार" is one place, not two.
 - claimed_date: only if the post states a Gregorian date (YYYY-MM-DD); null for \
 Nepali calendar dates and when no date is stated.
+- claimed_year: the year the post says the event happened, exactly as written, whether \
+Gregorian (2015) or Nepali calendar (२०८२ is 2082); null if no year is stated.
 - numbers: every number the claim depends on (deaths, missing, rainfall, money); \
 unit and refers_to in English, e.g. value 50, unit "people", refers_to "missing".
 - visible_text: on-screen text in the frames (captions, banners, signs), verbatim.

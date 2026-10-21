@@ -47,7 +47,7 @@ export interface ArchiveHit {
 export interface Passage {
   passage_id: string;
   source: string;
-  source_kind: "news" | "official" | "fact_check";
+  source_kind: "news" | "official" | "fact_check" | "web";
   url: string;
   title: string | null;
   published_at: string | null;
@@ -61,6 +61,10 @@ export interface Verdict {
   rationale_en: string;
   rationale_ne: string;
   citations: { passage_id: string; stance: Stance }[];
+  // Null on verdicts drafted before findings were asked for.
+  media_finding?: string | null;
+  event_finding?: string | null;
+  number_finding?: string | null;
   model: string;
   fallback: boolean;
 }
@@ -169,6 +173,13 @@ export const desk = {
   me: (token: string) => call<{ name: string | null }>(token, "/desk/me"),
   queue: (token: string) => call<DeskSummary[]>(token, "/desk/queue"),
   case: (token: string, id: string) => call<DeskCase>(token, `/desk/cases/${id}`),
+  // Nepali for a checker's English rationale; `issue` says why to reread it, if anything.
+  translate: (token: string, english: string) =>
+    call<{ nepali: string; issue: string | null }>(token, "/desk/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ english }),
+    }),
   decide: (token: string, id: string, decision: Decision) =>
     call<DeskCase>(token, `/desk/cases/${id}/decision`, {
       method: "POST",
