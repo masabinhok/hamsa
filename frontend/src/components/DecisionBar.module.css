@@ -21,6 +21,17 @@
   gap: var(--space-4);
 }
 
+.nepali {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  justify-items: start;
+}
+
+.nepali label {
+  justify-self: stretch;
+}
+
 .editor label {
   display: grid;
   gap: var(--space-1);
