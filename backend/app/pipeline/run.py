@@ -104,6 +104,7 @@ def run(
             evidence=evidence,
             verdict=verdict,
             seen_on=seen_on or date.today(),
+            posted_on=seen_on,
         )
         return Result(outputs=outputs, decision=route(outputs), seconds=seconds)
 

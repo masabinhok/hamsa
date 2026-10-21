@@ -187,14 +187,18 @@ Implemented in `backend/app/pipeline/retrieve.py`. The corpus is built once by `
 | `confidence` | float from 0 to 1 | model self-report, used only alongside deterministic signals |
 | `rationale_en` | str, at most 120 words | shown on the desk |
 | `rationale_ne` | str | shown on the published verdict |
-| `citations` | list of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
+| `citations` | at most 3 of `{passage_id, stance}`, where stance is `supports` or `refutes` the claim | **every id must exist in the input**, otherwise the output is invalid |
+| `media_finding` | `shows_claim`, `elsewhere`, `ai_generated`, `not_established`, `no_media` | router: a refuting label needs a contradicting finding |
+| `event_finding` | `confirmed`, `contradicted`, `not_found` | same |
+| `number_finding` | `consistent`, `contradicted`, `not_established`, `none_claimed` | same; `contradicted` needs the post's date |
 | `model` | str | which model produced it (Groq or fallback) |
 | `fallback` | bool | true when the local model judged because Groq was unavailable |
 | `nepali_issue` | str or null | why the Nepali rationale may not say what the English says, or that it could not be checked; null when gpt-oss-20b found it faithful |
 
 Implemented in `backend/app/pipeline/verdict.py`, with clients in `backend/app/llm/groq.py` and `backend/app/llm/ollama.py`.
 
-- **Evidence only.** The prompt gives the model the claim, the archive matches (each marked strong or weak using the router's rule), and the evidence passages with their headlines. It instructs `unverifiable` whenever the passages do not address this specific claim. The post and the passages are marked as data, so instructions inside them are ignored.
+- **Findings before the label.** The model records what it found about the media, the event, and the figures, then picks the label. A claim nothing supports was drafted `false` at 0.92 ("403 tourists missing": no report counted tourists), so the router checks the label against the findings. Figures are judged against reports from around the post's date, since counts change daily.
+- **Evidence only.** The prompt gives the model the claim, the post's date when known, the strong archive matches only (a weak one was read as evidence), and the evidence passages with their headlines. It instructs `unverifiable` whenever the passages do not address this specific claim. The post and the passages are marked as data, so instructions inside them are ignored.
 - **The implicit media claim.** A post with images or video claims that the media shows the event. The prompt tells the model to check that claim first: on-screen text naming another place, a fact-check of the same footage, or an archive match. On the real Rasuwa post this changed the verdict from "misleading, the cause is disputed" to "false, the video is from Columbia Glacier".
 - **Headlines.** Fact-check headlines usually state the verdict, so every passage is shown with its title.
 - **Citations cannot point at missing passages.** Passages are shown as `E1`..`E8`, and the JSON schema allows only those labels in `citations`, so under constrained decoding (Groq strict mode, Ollama `format`) an unseen passage cannot be cited. A post-parse check guards the same rule, plus the 120-word rationale limit; a violation gets one retry with the error shown.
@@ -242,6 +246,9 @@ flowchart TD
   - a `true` verdict with a strong `prior` hit
   - a `true` verdict with an AI-tool watermark
   - any cited passage whose stance contradicts the verdict
+  - a `true` verdict whose `media_finding` is `elsewhere` or `ai_generated`, or `not_established`: a real event does not vouch for unidentified footage
+  - a `false` or `misleading` verdict with no contradicting finding, strong `prior` hit, or watermark: absence of evidence is not a refutation
+  - a `contradicted` figure when neither the post nor its claim gives a date
 
 Notes:
 - **Thresholds are starting values** (`Thresholds` in the router). Model confidence is not calibrated, so they are tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.

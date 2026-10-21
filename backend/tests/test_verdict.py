@@ -26,6 +26,9 @@ EVIDENCE = Evidence(
 
 def draft(**overrides: Any) -> dict[str, Any]:
     fields: dict[str, Any] = {
+        "media_finding": "elsewhere",
+        "event_finding": "confirmed",
+        "number_finding": "none_claimed",
         "label": "false",
         "confidence": 0.9,
         "rationale_en": "The video is from Alaska.",
@@ -64,9 +67,10 @@ class FakeReasoner:
         return parsed
 
 
-def test_schema_allows_only_the_given_evidence_labels() -> None:
+def test_schema_allows_only_the_given_evidence_labels_and_three_citations() -> None:
     schema = draft_schema(["E1", "E2"])
     assert schema["$defs"]["DraftCitation"]["properties"]["evidence"]["enum"] == ["E1", "E2"]
+    assert schema["properties"]["citations"]["maxItems"] == 3
 
 
 def test_schema_forbids_citations_when_there_is_no_evidence() -> None:

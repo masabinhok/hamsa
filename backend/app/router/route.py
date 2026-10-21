@@ -12,8 +12,11 @@ from app.pipeline.contracts import (
     ArchiveLabel,
     Claim,
     Duplicate,
+    EventFinding,
     Evidence,
+    MediaFinding,
     MediaMatch,
+    NumberFinding,
     Route,
     RouteDecision,
     SourceKind,
@@ -39,6 +42,7 @@ AI_TOOL_MARKS = (
 )
 
 REFUTING_LABELS = (VerdictLabel.FALSE, VerdictLabel.MISLEADING)
+FOOTAGE_REFUTED = (MediaFinding.ELSEWHERE, MediaFinding.AI_GENERATED)
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,8 @@ class StageOutputs:
     verdict: Verdict | None = None
     # When the post was made or submitted; dates archive footage that has no prior label.
     seen_on: date | None = None
+    # When the post was made, if known; seen_on falls back to the submission day.
+    posted_on: date | None = None
 
 
 def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) -> RouteDecision:
@@ -107,7 +113,8 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
 
     strong_prior = recycled_hits(outputs, thresholds)
     ai_marks = _ai_tool_marks(claim)
-    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks)
+    dated = outputs.posted_on is not None or claim.claimed_date is not None
+    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks, dated=dated)
     label = verdict.label
 
     def decide(route: Route, reasons: list[str]) -> RouteDecision:
@@ -203,6 +210,16 @@ def _is_older_footage(
     return (reference - hit.original_date).days > t.same_event_days
 
 
+def _found_refuting(verdict: Verdict) -> bool:
+    if verdict.media_finding is None:  # drafted before findings were asked for
+        return True
+    return (
+        verdict.media_finding in FOOTAGE_REFUTED
+        or verdict.event_finding is EventFinding.CONTRADICTED
+        or verdict.number_finding is NumberFinding.CONTRADICTED
+    )
+
+
 def _ai_tool_marks(claim: Claim) -> list[str]:
     found: list[str] = []
     for mark in claim.watermarks:
@@ -250,6 +267,8 @@ def _conflicts(
     evidence: Evidence,
     strong_prior: list[ArchiveHit],
     ai_marks: list[str],
+    *,
+    dated: bool,
 ) -> list[str]:
     conflicts: list[str] = []
     if verdict.label is VerdictLabel.TRUE:
@@ -260,6 +279,19 @@ def _conflicts(
         if ai_marks:
             marks = ", ".join(ai_marks)
             conflicts.append(f"verdict is true but ai-tool watermark visible: {marks}")
+        if verdict.media_finding in FOOTAGE_REFUTED:
+            conflicts.append(f"verdict is true but the footage is {verdict.media_finding}")
+        if verdict.media_finding is MediaFinding.NOT_ESTABLISHED:
+            # Real event, unknown footage: the post's implicit claim is still open.
+            conflicts.append("the event is confirmed but nothing shows the footage is from it")
+
+    if verdict.label in REFUTING_LABELS and not (
+        strong_prior or ai_marks or _found_refuting(verdict)
+    ):
+        # "Nothing supports the claim" was drafted false: absence of evidence is not evidence.
+        conflicts.append(f"verdict is {verdict.label} but nothing found contradicts the claim")
+    if verdict.number_finding is NumberFinding.CONTRADICTED and not dated:
+        conflicts.append("figures change daily and the post's date is unknown")
 
     if verdict.nepali_issue:
         conflicts.append(f"Nepali rationale needs a checker: {verdict.nepali_issue}")

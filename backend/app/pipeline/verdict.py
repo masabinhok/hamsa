@@ -19,14 +19,19 @@ from app.pipeline.contracts import (
     RATIONALE_MAX_WORDS,
     Citation,
     Claim,
+    EventFinding,
     Evidence,
+    MediaFinding,
     MediaMatch,
+    NumberFinding,
     Stance,
     Verdict,
     VerdictLabel,
 )
 from app.router.route import is_strong_match
 
+# Checkers found eight cited sources unreadable, and most were about other events.
+MAX_CITATIONS = 3
 PASSAGE_CHARS = 900  # trims prompt tokens: Groq's free tier allows 8000 tokens/min
 # Evidence labels mean nothing to the public; the model was told, but still wrote
 # "Fact-check reports (E4, E5) show..." in a published rationale.
@@ -70,11 +75,28 @@ of the event named there: it supports a post that presents it as that event. Onl
 matches are listed. No match says nothing about the claim: the archive \
 holds a small fraction of all footage, so never treat a missing match as evidence.
 
-citations: every passage your decision relies on, by its label, with its stance toward \
-the claim: "supports" or "refutes". Cite nothing you did not use.
+First record three findings, then choose the label from them:
+- media_finding: "shows_claim" (a frame match or fact-check places the media in this \
+event), "elsewhere" (another place, year, or event), "ai_generated", "not_established" \
+(nothing decides it), or "no_media".
+- event_finding: "confirmed", "contradicted", or "not_found" for the event the post \
+describes.
+- number_finding for the figures the post states (deaths, missing, rescued): \
+"consistent", "contradicted", "not_established", or "none_claimed". Counts change daily \
+as people are found, so compare only with reports from around the post's date that count \
+the same group (tourists are not all missing people). A figure no report gives is \
+"not_established", never "contradicted".
+false and misleading need a finding that contradicts the claim. When nothing found \
+contradicts it and nothing confirms it, the label is unverifiable: a claim no passage \
+supports is unverified, not false.
+
+citations: at most {MAX_CITATIONS} passages your decision relies on, the most direct \
+first, by label, with their stance toward the claim: "supports" or "refutes". Cite \
+nothing you did not use and nothing about another event.
 confidence: your probability that the label is right, from 0 to 1.
 rationale_en: at most {RATIONALE_MAX_WORDS} words, plain English, naming the decisive \
 evidence by its source (e.g. "Nepal Factcheck"), never by its label: the public reads this. \
+One sentence on what the media is, then one on the event and figures. \
 rationale_ne: the same rationale in Nepali (Devanagari).
 """
 
@@ -91,6 +113,9 @@ class VerdictDraft(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    media_finding: MediaFinding
+    event_finding: EventFinding
+    number_finding: NumberFinding
     label: VerdictLabel
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
     rationale_en: str
@@ -158,6 +183,7 @@ def draft_schema(labels: Sequence[str]) -> dict[str, Any]:
     evidence = schema["$defs"]["DraftCitation"]["properties"]["evidence"]
     if labels:
         evidence["enum"] = list(labels)
+        schema["properties"]["citations"]["maxItems"] = MAX_CITATIONS
     else:
         schema["properties"]["citations"]["maxItems"] = 0
     return schema
@@ -225,6 +251,8 @@ def judge(
         unknown = [c.evidence for c in draft.citations if c.evidence not in labels]
         if unknown:
             return f"citations {unknown} are not among the evidence labels {labels}"
+        if len(draft.citations) > MAX_CITATIONS:
+            return f"cite at most {MAX_CITATIONS} passages, the most direct"
         for name, text in (
             ("rationale_en", draft.rationale_en),
             ("rationale_ne", draft.rationale_ne),
@@ -261,6 +289,9 @@ def judge(
                 Citation(passage_id=passage_ids[c.evidence], stance=c.stance)
                 for c in draft.citations
             ],
+            media_finding=draft.media_finding,
+            event_finding=draft.event_finding,
+            number_finding=draft.number_finding,
             model=model,
             fallback=position > 0,
             nepali_issue=check_nepali(rationale_en, rationale_ne, checker),
