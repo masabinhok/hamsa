@@ -54,13 +54,16 @@ Posts with images or video make two claims: the stated claim, and the implicit c
 that the media shows it. Recycled footage is the most common tactic, so check the media \
 claim first: on-screen text naming another place or event, a fact-check about the same \
 footage, or an archive match each decide it. If the media is shown to be from elsewhere, \
-the post is false even when the event itself is real.
+the post is false even when the event itself is real. Old footage is not false in \
+itself: a post that presents it as what it is (its own place, year, and event) is right \
+about its media.
 
 Archive matches: a strong match to "prior" footage means the media is older or from \
 elsewhere, which is decisive for media presented as this incident. It is evidence in \
 its own right, from the fact-checkers' archive: decide on it even though it has no label \
 to cite and no passage repeats it, and name it in the rationale ("the footage matches \
-..."). A weak match is only a hint.
+..."). Only frame matches are listed. No match says nothing about the claim: the archive \
+holds a small fraction of all footage, so never treat a missing match as evidence.
 
 citations: every passage your decision relies on, by its label, with its stance toward \
 the claim: "supports" or "refutes". Cite nothing you did not use.
@@ -164,12 +167,13 @@ def build_prompt(claim: Claim, media: MediaMatch, evidence: Evidence, has_media:
     ]
 
     lines.append("\nARCHIVE MATCHES:")
-    if not media.hits:
+    # Weak matches were read as evidence: a 97% "false" rested on one with no frame in common.
+    strong = [hit for hit in media.hits if is_strong_match(hit)]
+    if not strong:
         lines.append("none")
-    for hit in media.hits:
-        strength = "strong" if is_strong_match(hit) else "weak"
+    for hit in strong:
         lines.append(
-            f"- {strength} match to {hit.archive_label} footage: {hit.original_context}"
+            f"- strong match to {hit.archive_label} footage: {hit.original_context}"
             f" (perceptual hash distance {hit.phash_distance}/64, similarity {hit.cosine})"
         )
 
