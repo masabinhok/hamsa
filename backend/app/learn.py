@@ -45,8 +45,10 @@ def teach(lesson: Verdicted, index: ArchiveIndex, embed: Embed, fetch: Fetch) ->
         added += _keep_original(lesson, lesson.original_url, index, embed, fetch)
 
     if lesson.label is VerdictLabel.TRUE:
+        # The report date bounds the footage date from above, as an upload date does.
         label, when = ArchiveLabel.VERIFIED_GENUINE, lesson.reported_on
-        context = f"Verified genuine on Hamsa, reported {lesson.reported_on}"
+        # The checker's rationale names the event; the next case's verdict reads it.
+        context = f"Verified genuine on Hamsa: {lesson.rationale_en[:200]}"
     elif lesson.label in REFUTED:
         label, when = ArchiveLabel.PRIOR, None
         context = f"Debunked on Hamsa as {lesson.label}: {lesson.rationale_en[:200]}"

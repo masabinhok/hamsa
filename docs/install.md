@@ -22,12 +22,13 @@ ollama pull bge-m3
 
 cp .env.example .env
 # In .env: set GROQ_API_KEY, FETCH_BROWSER=firefox to open Facebook and TikTok links,
-# and FACT_CHECK_API_KEY if you have one.
+# FACT_CHECK_API_KEY if you have one, and a secret for the local web search:
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 
 docker compose up -d --build
 ```
 
-This starts five services: the vector store (`qdrant`), the API, the worker that checks posts, the corpus watcher that adds new articles every 15 minutes, and the website.
+This starts six services: the vector store (`qdrant`), the API, the worker that checks posts, the corpus watcher that adds new articles every 15 minutes, a private web search (`searxng`, on localhost only) for evidence the news corpus lacks, and the website.
 
 ### Build the evidence and the archive (first time only)
 

@@ -66,6 +66,7 @@ def test_a_true_verdict_makes_its_footage_known_genuine(
     ]
     [row] = archive.manifest_rows()
     assert (row.label, row.original_date) == (ArchiveLabel.VERIFIED_GENUINE, date(2026, 8, 27))
+    assert row.original_context == "Verified genuine on Hamsa: The footage is from Alaska."
     assert strong_hits(index) == ["case-c1-0"]  # a later repost is recognised
 
 

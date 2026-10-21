@@ -25,6 +25,22 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
   const [original, setOriginal] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState<string | null>(null);
+
+  async function translate() {
+    setTranslating(true);
+    setTranslation(null);
+    try {
+      const { nepali, issue } = await desk.translate(token, rationaleEn);
+      setRationaleNe(nepali);
+      setTranslation(issue ? `Reread the Nepali: ${issue}` : "Translated. Read it once before publishing.");
+    } catch (caught) {
+      setTranslation(caught instanceof ApiError ? caught.message : "Translation failed; write the Nepali by hand.");
+    } finally {
+      setTranslating(false);
+    }
+  }
 
   async function send(decision: Decision, done: string) {
     setBusy(true);
@@ -135,16 +151,27 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
             Rationale in English
             <textarea value={rationaleEn} onChange={(e) => setRationaleEn(e.target.value)} rows={3} required />
           </label>
-          <label>
-            Rationale in Nepali
-            <textarea
-              lang="ne"
-              value={rationaleNe}
-              onChange={(e) => setRationaleNe(e.target.value)}
-              rows={3}
-              required
-            />
-          </label>
+          <div className={styles.nepali}>
+            <label>
+              Rationale in Nepali
+              <textarea
+                lang="ne"
+                value={rationaleNe}
+                onChange={(e) => setRationaleNe(e.target.value)}
+                rows={3}
+                required
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.link}
+              onClick={translate}
+              disabled={translating || !rationaleEn.trim()}
+            >
+              {translating ? "Translating…" : "Translate from the English"}
+            </button>
+            {translation && <p role="status">{translation}</p>}
+          </div>
         </div>
       )}
       <div className={styles.actions}>

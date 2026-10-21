@@ -142,6 +142,29 @@ def test_genuine_footage_age_boundaries(
     assert (decision.route is Route.FAST_TRACK) is recycled
 
 
+@pytest.mark.parametrize(
+    ("claimed_year", "recycled"),
+    [
+        (2082, False),  # Bikram Sambat: Apr 2025 to Apr 2026, the footage's own year
+        (2025, False),
+        (2083, True),  # BS 2083 began Apr 2026, after the footage
+        (2026, True),
+        (None, True),  # undated post seen a year on
+    ],
+)
+def test_a_year_the_post_states_dates_its_footage(claimed_year: int | None, recycled: bool) -> None:
+    genuine = hit(archive_label="verified_genuine", original_date=date(2025, 9, 28))
+    decision = route(
+        outputs(
+            claim=claim(claimed_year=claimed_year),
+            hits=[genuine],
+            verdict=verdict("misleading", 0.3),
+            seen_on=date(2026, 10, 21),
+        )
+    )
+    assert (decision.route is Route.FAST_TRACK) is recycled
+
+
 def test_recycled_media_with_true_verdict_is_a_conflict() -> None:
     decision = route(outputs(hits=[hit()], verdict=verdict("true", confidence=0.99)))
     assert decision.route is Route.HUMAN_REVIEW
@@ -355,3 +378,79 @@ def test_nepali_issue_stops_a_recycled_fast_track() -> None:
     decision = route(outputs(hits=[hit()], verdict=flipped))
     assert decision.route is Route.HUMAN_REVIEW
     assert decision.reasons == ["Nepali rationale needs a checker: verdict direction"]
+
+
+# findings
+
+
+NEWS = [passage("p1", "Onlinekhabar"), passage("p2", "Nepalnews")]
+TWO_REFUTE = [cite("p1"), cite("p2")]
+
+
+def findings(media: str, event: str = "confirmed", number: str = "none_claimed") -> dict[str, str]:
+    return {"media_finding": media, "event_finding": event, "number_finding": number}
+
+
+def test_false_with_nothing_contradicting_the_claim_goes_to_a_checker() -> None:
+    # "403 tourists missing": no report gives a tourist count, which is not a refutation.
+    unproven = verdict(
+        "false",
+        0.92,
+        citations=TWO_REFUTE,
+        **findings("not_established", "confirmed", "not_established"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=unproven, posted_on=date(2026, 8, 28)))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["verdict is false but nothing found contradicts the claim"]
+
+
+@pytest.mark.parametrize(
+    ("posted_on", "route_to"),
+    [(None, Route.HUMAN_REVIEW), (date(2026, 8, 28), Route.FAST_TRACK)],
+)
+def test_a_contradicted_figure_needs_the_posts_date(
+    posted_on: date | None, route_to: Route
+) -> None:
+    wrong_toll = verdict(
+        "false",
+        0.92,
+        citations=TWO_REFUTE,
+        **findings("not_established", "confirmed", "contradicted"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=wrong_toll, posted_on=posted_on))
+    assert decision.route is route_to
+    if posted_on is None:
+        assert decision.reasons == ["figures change daily and the post's date is unknown"]
+
+
+def test_true_with_footage_from_elsewhere_is_a_conflict() -> None:
+    mixed = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("elsewhere"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=mixed))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["verdict is true but the footage is elsewhere"]
+
+
+def test_a_real_event_does_not_vouch_for_unidentified_footage() -> None:
+    unseen = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("not_established"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=unseen))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["the event is confirmed but nothing shows the footage is from it"]
+
+
+def test_web_pages_never_count_as_independent_sources() -> None:
+    web = [
+        passage("p1", "site-a.test", source_kind="web"),
+        passage("p2", "site-b.test", source_kind="web"),
+    ]
+    decision = route(outputs(passages=web, verdict=verdict("false", 0.95, citations=TWO_REFUTE)))
+    assert decision.route is Route.HUMAN_REVIEW

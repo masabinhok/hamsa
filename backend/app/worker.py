@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 from functools import partial
 from pathlib import Path
 
@@ -24,6 +24,8 @@ from app.pipeline.contracts import (
     DuplicateBasis,
     Route,
     RouteDecision,
+    Stage,
+    StageFailure,
     VerdictLabel,
 )
 from app.pipeline.run import Result
@@ -42,17 +44,21 @@ from app.store.models import Case, Job, Lesson, Media, utcnow
 
 MAX_ATTEMPTS = 3
 MAX_CAPTION_CHARS = 5000  # the same limit as submitted text (MAX_TEXT_CHARS in the API)
+UNOPENED = "the post could not be opened; ask the sender for the photo or video"
+SENDER_NOTE = "Sender's note: "  # the extraction prompt reads text after this as context
 BACKOFF = (timedelta(seconds=30), timedelta(minutes=2))
 POLL_S = 1.0
 
-Runner = Callable[[str | None, Sequence[Path]], Result]
+# Text, media, and the post's own date when the link gave one.
+Runner = Callable[[str | None, Sequence[Path], date | None], Result]
 Fetch = Callable[[str, Path], Downloaded]
 Teach = Callable[[Verdicted], list[str]]
 log = logging.getLogger("hamsa.worker")
 
 
-def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch) -> None:
+def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch) -> date | None:
     """Download the media behind a pasted link, so a link is checked like an upload.
+    Returns the post's upload date, which dates the event better than the day it was sent.
 
     On failure the case goes on with its text; the public page asks for the file.
     """
@@ -60,7 +66,7 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         case = session.get_one(Case, case_id)
         url = case.source_url if not case.media else None
     if url is None:
-        return
+        return None
     with tempfile.TemporaryDirectory() as tmp:
         try:
             post = fetch(url, Path(tmp))
@@ -68,7 +74,7 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
             stderr = getattr(error, "stderr", None) or ""
             reason = stderr.strip().splitlines()[-1] if stderr.strip() else type(error).__name__
             log.warning("case %s: could not fetch %s: %s", case_id, url, reason)
-            return
+            return None
         stored: list[StoredMedia] = []
         for file in post.files:
             data = file.read_bytes()
@@ -79,9 +85,12 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         case.media.extend(
             Media(filename=m.filename, sha256=m.sha256, size_bytes=m.size_bytes) for m in stored
         )
-        if not case.text and post.caption:
-            case.text = post.caption[:MAX_CAPTION_CHARS]
+        if post.caption:
+            caption = post.caption[:MAX_CAPTION_CHARS]
+            # The caption is what the post claims; the sender's words only frame it.
+            case.text = f"{caption}\n\n{SENDER_NOTE}{case.text}" if case.text else caption
     log.info("case %s: fetched %d file(s) from the link", case_id, len(stored))
+    return post.uploaded
 
 
 def process_next(
@@ -93,8 +102,9 @@ def process_next(
     if claimed is None:
         return None
     job_id, case_id = claimed
-    if fetch is not None:
-        attach_link_media(db, case_id, media_root, fetch)
+    # shortcut: the date lives only in this run; a retried job loses it. Store it on the
+    # case once the schema gets migrations.
+    posted = attach_link_media(db, case_id, media_root, fetch) if fetch else None
 
     with db.session() as session:
         case = session.get_one(Case, case_id)
@@ -106,9 +116,14 @@ def process_next(
         # The same file is already on the desk: merge without spending any model time.
         same = StageOutputs(duplicate=Duplicate(case_id=original, basis=DuplicateBasis.MEDIA))
         result = Result(outputs=same, decision=route(same))
+    elif not (text and text.strip()) and not paths:
+        # A model asked about an empty post invents one: "a flood sweeping through a
+        # market in Nepal" was checked, and fast-tracked, for an unopened Facebook post.
+        empty = StageOutputs(failures=(StageFailure(stage=Stage.INGEST, error=UNOPENED),))
+        result = Result(outputs=empty, decision=route(empty))
     else:
         try:
-            result = runner(text, paths)
+            result = runner(text, paths, posted)
         except Exception as error:  # a pipeline bug must not loop forever or lose the case
             log.exception("case %s: pipeline error", case_id)
             result = Result(
@@ -184,11 +199,11 @@ def main() -> int:
     def lesson(verdicted: Verdicted) -> list[str]:
         return teach(verdicted, pipeline.archive, pipeline.embed_image, fetch)
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         # The case being run is PROCESSING, so the routed cases never include itself.
         with db.session() as session:
             waiting = open_claims(session)
-        return run(pipeline, text, media, open_claims=waiting)
+        return run(pipeline, text, media, seen_on=posted, open_claims=waiting)
 
     log.info("worker ready")
     try:

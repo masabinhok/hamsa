@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 
 import pytest
@@ -25,6 +26,9 @@ EVIDENCE = Evidence(
 
 def draft(**overrides: Any) -> dict[str, Any]:
     fields: dict[str, Any] = {
+        "media_finding": "elsewhere",
+        "event_finding": "confirmed",
+        "number_finding": "none_claimed",
         "label": "false",
         "confidence": 0.9,
         "rationale_en": "The video is from Alaska.",
@@ -63,9 +67,10 @@ class FakeReasoner:
         return parsed
 
 
-def test_schema_allows_only_the_given_evidence_labels() -> None:
+def test_schema_allows_only_the_given_evidence_labels_and_three_citations() -> None:
     schema = draft_schema(["E1", "E2"])
     assert schema["$defs"]["DraftCitation"]["properties"]["evidence"]["enum"] == ["E1", "E2"]
+    assert schema["properties"]["citations"]["maxItems"] == 3
 
 
 def test_schema_forbids_citations_when_there_is_no_evidence() -> None:
@@ -80,6 +85,18 @@ def test_prompt_labels_evidence_and_states_media_and_match_strength() -> None:
     assert "- strong match to prior footage: 2023 Himachal Pradesh floods, Kullu" in prompt
     assert "[E1] Nepal Factcheck (fact_check, " in prompt
     assert "[E2] Onlinekhabar (news, " in prompt
+
+
+def test_prompt_states_the_posts_own_date() -> None:
+    prompt = build_prompt(claim(), MediaMatch(), Evidence(), True, date(2026, 8, 27))
+    assert "POSTED ON: 2026-08-27" in prompt
+    assert "POSTED ON" not in build_prompt(claim(), MediaMatch(), Evidence(), has_media=True)
+
+
+def test_weak_archive_matches_are_left_out_of_the_prompt() -> None:
+    weak = hit(phash_distance=30, cosine=0.5)
+    prompt = build_prompt(claim(), MediaMatch(hits=[weak]), Evidence(), has_media=True)
+    assert "ARCHIVE MATCHES:\nnone" in prompt
 
 
 def test_prompt_shows_passage_headlines() -> None:

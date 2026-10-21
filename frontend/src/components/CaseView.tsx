@@ -241,11 +241,46 @@ function DraftVerdict({ verdict }: { verdict: Verdict }) {
       <p className={styles.rationale} lang="ne">
         {verdict.rationale_ne}
       </p>
+      <Findings verdict={verdict} />
       <p className={styles.quiet}>
         Drafted by {verdict.model}
         {verdict.fallback && ", the local fallback model, because the main model was unavailable"}.
       </p>
     </section>
+  );
+}
+
+const findingText: Record<string, string> = {
+  shows_claim: "shown to be from this event",
+  elsewhere: "from another place, year, or event",
+  ai_generated: "AI-generated",
+  not_established: "not established",
+  no_media: "none in the post",
+  confirmed: "confirmed",
+  contradicted: "contradicted",
+  not_found: "not found in the evidence",
+  consistent: "consistent with reports from around the post's date",
+  none_claimed: "none claimed",
+};
+
+// What the model found before choosing its label; the router checks one against the other.
+function Findings({ verdict }: { verdict: Verdict }) {
+  const rows: [string, string | null | undefined][] = [
+    ["Footage", verdict.media_finding],
+    ["Event", verdict.event_finding],
+    ["Figures", verdict.number_finding],
+  ];
+  const shown = rows.filter((row): row is [string, string] => Boolean(row[1]));
+  if (shown.length === 0) return null;
+  return (
+    <dl className={styles.facts}>
+      {shown.map(([term, finding]) => (
+        <div key={term} className={styles.fact}>
+          <dt>{term}</dt>
+          <dd>{findingText[finding] ?? finding}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -365,7 +400,13 @@ function PassageItem({ passage, stance }: { passage: Passage; stance?: "supports
   const date = passage.published_at
     ? new Date(passage.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : "undated";
-  const kind = passage.source_kind === "fact_check" ? "fact-check" : passage.source_kind;
+  const kinds: Record<Passage["source_kind"], string> = {
+    news: "news",
+    official: "official",
+    fact_check: "fact-check",
+    web: "web search, unvetted",
+  };
+  const kind = kinds[passage.source_kind];
   return (
     <li className={styles.passage} data-stance={stance}>
       <p className={styles.passageSource}>

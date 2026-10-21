@@ -16,13 +16,14 @@ from app.config import Settings, get_settings
 from app.ingest.frames import Frame
 from app.llm.groq import GroqClient
 from app.llm.ollama import OllamaClient
-from app.pipeline.claim_reviews import ClaimReviewSearch
+from app.pipeline.claim_reviews import ClaimReviewSearch, same_claim_only
 from app.pipeline.contracts import Claim
 from app.pipeline.extract import extract_claim
 from app.pipeline.media_match import ArchiveIndex, SiglipEmbedder
 from app.pipeline.retrieve import EvidenceStore
 from app.pipeline.run import Pipeline, Result, run
 from app.pipeline.verdict import Reasoner
+from app.pipeline.web_search import WebSearch
 
 
 def build_pipeline(settings: Settings) -> Pipeline:
@@ -54,10 +55,13 @@ def build_pipeline(settings: Settings) -> Pipeline:
         reasoners=reasoners,
         nepali_checker=checker,
         find_reviews=(
-            ClaimReviewSearch(settings.fact_check_api_key.get_secret_value())
-            if settings.fact_check_api_key
+            same_claim_only(
+                ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()), checker
+            )
+            if settings.fact_check_api_key and checker
             else None
         ),
+        find_web=WebSearch(str(settings.searxng_url), embed_text) if settings.searxng_url else None,
     )
 
 
