@@ -42,10 +42,15 @@ from app.api.schemas import (
     PublicStep,
     PublishedVerdict,
     Source,
+    TranslateRequest,
+    TranslateResponse,
 )
 from app.checkers import signed_in
 from app.config import REPO_ROOT, get_settings
+from app.llm.groq import GroqClient, ReasonerUnavailable
+from app.llm.structured import StructuredOutputError
 from app.pipeline.contracts import Route, VerdictLabel
+from app.pipeline.verdict import Reasoner, translate
 from app.store.cases import (
     Database,
     DecisionError,
@@ -272,6 +277,21 @@ def archive_media(
     return FileResponse(path)
 
 
+@desk.post("/translate")
+def translate_rationale(request: Request, body: TranslateRequest) -> TranslateResponse:
+    """Checkers write the rationale in English; the public also reads it in Nepali."""
+    translator: tuple[Reasoner, str] | None = request.app.state.translator
+    if translator is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "translation needs GROQ_API_KEY")
+    try:
+        nepali, issue = translate(body.english, translator, request.app.state.nepali_checker)
+    except (ReasonerUnavailable, StructuredOutputError) as error:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "translation failed; write the Nepali by hand"
+        ) from error
+    return TranslateResponse(nepali=nepali, issue=issue)
+
+
 @desk.post("/cases/{case_id}/decision")
 def decide(
     session: DbSession,
@@ -310,10 +330,13 @@ def create_app(
     desk_token: SecretStr | None,
     origin: str,
     data_root: Path = REPO_ROOT / "data",
+    translator: tuple[Reasoner, str] | None = None,
+    nepali_checker: tuple[Reasoner, str] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hamsa", version="0.1.0")
     app.state.db, app.state.media_root, app.state.desk_token = db, media_root, desk_token
     app.state.data_root = data_root
+    app.state.translator, app.state.nepali_checker = translator, nepali_checker
     app.state.limiter = RateLimiter(SUBMISSIONS_PER_MINUTE)
     app.state.failed_sign_ins = RateLimiter(FAILED_SIGN_INS_PER_MINUTE)
     app.add_middleware(
@@ -432,4 +455,16 @@ def default_app() -> FastAPI:
     settings = get_settings()
     db = Database(settings.database_url)
     db.create_all()
-    return create_app(db, settings.media_root, settings.desk_token, settings.frontend_origin)
+    translator = checker = None
+    if settings.groq_api_key is not None:
+        key = settings.groq_api_key.get_secret_value()
+        translator = (GroqClient(key), settings.reasoning_model)
+        checker = (GroqClient(key, reasoning_effort="low"), settings.checking_model)
+    return create_app(
+        db,
+        settings.media_root,
+        settings.desk_token,
+        settings.frontend_origin,
+        translator=translator,
+        nepali_checker=checker,
+    )

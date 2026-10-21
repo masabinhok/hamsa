@@ -2,9 +2,9 @@
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from app.pipeline.contracts import ArchiveLabel, Route, VerdictLabel
 from app.store.models import CaseStatus
@@ -116,3 +116,13 @@ class DecisionRequest(BaseModel):
     note: str | None = None
     # For publish: where the checker found the original footage; the archive keeps it.
     original_url: HttpUrl | None = None
+
+
+class TranslateRequest(BaseModel):
+    english: Annotated[str, Field(min_length=1, max_length=5000)]  # MAX_TEXT_CHARS
+
+
+class TranslateResponse(BaseModel):
+    nepali: str
+    # Why the checker should reread the Nepali before publishing; None when it is faithful.
+    issue: str | None
