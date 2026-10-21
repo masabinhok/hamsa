@@ -400,7 +400,13 @@ function PassageItem({ passage, stance }: { passage: Passage; stance?: "supports
   const date = passage.published_at
     ? new Date(passage.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : "undated";
-  const kind = passage.source_kind === "fact_check" ? "fact-check" : passage.source_kind;
+  const kinds: Record<Passage["source_kind"], string> = {
+    news: "news",
+    official: "official",
+    fact_check: "fact-check",
+    web: "web search, unvetted",
+  };
+  const kind = kinds[passage.source_kind];
   return (
     <li className={styles.passage} data-stance={stance}>
       <p className={styles.passageSource}>

@@ -47,7 +47,7 @@ export interface ArchiveHit {
 export interface Passage {
   passage_id: string;
   source: string;
-  source_kind: "news" | "official" | "fact_check";
+  source_kind: "news" | "official" | "fact_check" | "web";
   url: string;
   title: string | null;
   published_at: string | null;
