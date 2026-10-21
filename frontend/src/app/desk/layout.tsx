@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Queue } from "@/components/Queue";
 import { SignIn } from "@/components/SignIn";
-import { QueueProvider } from "@/lib/queue";
+import { QueueProvider, useQueue } from "@/lib/queue";
 import { CheckerProvider, signOut, useStoredChecker } from "@/lib/session";
 import styles from "./desk.module.css";
 
@@ -30,9 +30,22 @@ export default function DeskLayout({ children }: LayoutProps<"/desk">) {
             </header>
             <Queue />
           </aside>
-          <main className={styles.main}>{children}</main>
+          <main className={styles.main}>
+            <Notice />
+            {children}
+          </main>
         </div>
       </QueueProvider>
     </CheckerProvider>
+  );
+}
+
+// Always mounted, so screen readers hear each confirmation through the same live region.
+function Notice() {
+  const { notice } = useQueue();
+  return (
+    <p className={styles.notice} role="status" data-shown={notice.shown ? "" : undefined}>
+      {notice.text}
+    </p>
   );
 }

@@ -101,3 +101,16 @@
   border-radius: 3px;
   color: var(--ink-soft);
 }
+
+/* Purpose A, cause and effect: a case arrived while the checker was working. Only arrivals
+   animate, never the first render; removals are not animated (see the motion notes). */
+.row[data-arrived] {
+  animation: arrive var(--dur-medium) var(--ease-out);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--shift)));
+  }
+}
