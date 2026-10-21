@@ -82,6 +82,12 @@ def test_prompt_labels_evidence_and_states_media_and_match_strength() -> None:
     assert "[E2] Onlinekhabar (news, " in prompt
 
 
+def test_weak_archive_matches_are_left_out_of_the_prompt() -> None:
+    weak = hit(phash_distance=30, cosine=0.5)
+    prompt = build_prompt(claim(), MediaMatch(hits=[weak]), Evidence(), has_media=True)
+    assert "ARCHIVE MATCHES:\nnone" in prompt
+
+
 def test_prompt_shows_passage_headlines() -> None:
     headlined = Evidence(
         passages=[passage("x-0", "Nepal Factcheck", title="Viral video is from Alaska")]
