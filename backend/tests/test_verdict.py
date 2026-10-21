@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 
 import pytest
@@ -80,6 +81,12 @@ def test_prompt_labels_evidence_and_states_media_and_match_strength() -> None:
     assert "- strong match to prior footage: 2023 Himachal Pradesh floods, Kullu" in prompt
     assert "[E1] Nepal Factcheck (fact_check, " in prompt
     assert "[E2] Onlinekhabar (news, " in prompt
+
+
+def test_prompt_states_the_posts_own_date() -> None:
+    prompt = build_prompt(claim(), MediaMatch(), Evidence(), True, date(2026, 8, 27))
+    assert "POSTED ON: 2026-08-27" in prompt
+    assert "POSTED ON" not in build_prompt(claim(), MediaMatch(), Evidence(), has_media=True)
 
 
 def test_weak_archive_matches_are_left_out_of_the_prompt() -> None:

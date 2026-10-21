@@ -1,5 +1,6 @@
 import subprocess
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ def db(tmp_path: Path) -> Database:
     return database(tmp_path)
 
 
-def transient_failure(text: str | None, media: Sequence[Path]) -> Result:
+def transient_failure(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
     failure = StageFailure(stage=Stage.EXTRACT, error="ConnectError: ollama down", transient=True)
     return routed_result(StageOutputs(failures=(failure,)))
 
@@ -33,14 +34,14 @@ def force_due(db: Database) -> None:
 
 
 def test_nothing_to_do(db: Database, tmp_path: Path) -> None:
-    assert process_next(db, lambda t, m: routed_result(), tmp_path) is None
+    assert process_next(db, lambda t, m, p: routed_result(), tmp_path) is None
 
 
 def test_runs_the_pipeline_with_the_case_text_and_media_paths(db: Database, tmp_path: Path) -> None:
     add_case(db, "c1", text="बाढी आयो")
     seen: list[tuple[str | None, list[Path]]] = []
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         seen.append((text, list(media)))
         return routed_result()
 
@@ -69,7 +70,7 @@ def test_transient_failure_is_retried_then_sent_to_a_human(db: Database, tmp_pat
 def test_pipeline_bug_routes_to_a_human_instead_of_looping(db: Database, tmp_path: Path) -> None:
     add_case(db, "c1")
 
-    def broken(text: str | None, media: Sequence[Path]) -> Result:
+    def broken(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         raise ValueError("router bug")
 
     process_next(db, broken, tmp_path)
@@ -92,7 +93,7 @@ def test_identical_file_is_merged_without_running_the_pipeline(
     add_with_file(db, "c2", "f" * 64)
     runs: list[str | None] = []
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         runs.append(text)
         return routed_result()
 
@@ -129,7 +130,7 @@ def test_a_pasted_link_is_fetched_and_checked_like_an_upload(db: Database, tmp_p
 
     seen: list[tuple[str | None, list[Path]]] = []
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         seen.append((text, list(media)))
         return routed_result()
 
@@ -141,21 +142,22 @@ def test_a_pasted_link_is_fetched_and_checked_like_an_upload(db: Database, tmp_p
         assert len(session.get_one(Case, "c1").media) == 1
 
 
-def test_the_posts_caption_leads_and_the_senders_note_follows(db: Database, tmp_path: Path) -> None:
+def test_the_posts_caption_and_date_come_with_the_link(db: Database, tmp_path: Path) -> None:
     with db.session.begin() as session:
         create_case(session, "c1", Channel.WEB, "is this real?", "https://x.com/a/status/1", [])
 
     def fetch(url: str, folder: Path) -> Downloaded:
-        return Downloaded([], "बुढीगण्डकीमा बाढी")
+        return Downloaded([], "बुढीगण्डकीमा बाढी", uploaded=date(2026, 10, 11))
 
-    seen: list[str | None] = []
+    seen: list[tuple[str | None, date | None]] = []
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
-        seen.append(text)
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        seen.append((text, posted))
         return routed_result()
 
     assert process_next(db, runner, tmp_path, fetch) == "c1"
-    assert seen == ["बुढीगण्डकीमा बाढी\n\nSender's note: is this real?"]
+    # The caption leads; the sender's note follows as context.
+    assert seen == [("बुढीगण्डकीमा बाढी\n\nSender's note: is this real?", date(2026, 10, 11))]
 
 
 def test_a_post_that_could_not_be_opened_goes_to_a_checker_unread(
@@ -166,7 +168,7 @@ def test_a_post_that_could_not_be_opened_goes_to_a_checker_unread(
     def fetch(url: str, folder: Path) -> Downloaded:
         raise subprocess.CalledProcessError(1, "yt-dlp", stderr="HTTP Error 404")
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         raise AssertionError("no model may be asked about an empty post")
 
     assert process_next(db, runner, tmp_path, fetch) == "c1"
@@ -187,7 +189,7 @@ def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_
 
     seen: list[list[Path]] = []
 
-    def runner(text: str | None, media: Sequence[Path]) -> Result:
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
         seen.append(list(media))
         return routed_result()
 

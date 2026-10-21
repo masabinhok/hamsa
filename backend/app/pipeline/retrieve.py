@@ -24,6 +24,9 @@ CANDIDATES_PER_QUERY = 20
 # News older than this before the claim is about an earlier event, e.g. 2024 Melamchi
 # reports for a 2026 Melamchi claim.
 NEWS_WINDOW = timedelta(days=30)
+# Reports confirming an event follow it within days; later news is about later events,
+# e.g. October Budhi Gandaki coverage cited for a post made during the August floods.
+NEWS_AFTER = timedelta(days=14)
 RRF_K = 60  # standard reciprocal-rank-fusion constant
 VISIBLE_TEXT_CHARS = 500
 
@@ -122,9 +125,13 @@ class EvidenceStore:
         )
         return len(rows)
 
-    def search(self, vector: list[float], since: date) -> list[dict[str, Any]]:
-        """Nearest passages published since `since`, or fact-checks of any date."""
+    def search(
+        self, vector: list[float], since: date, until: date | None = None
+    ) -> list[dict[str, Any]]:
+        """Nearest passages published from `since` through `until`, or fact-checks of any
+        date."""
         since_ts = int(datetime.combine(since, time.min, tzinfo=UTC).timestamp())
+        until_ts = int(datetime.combine(until, time.max, tzinfo=UTC).timestamp()) if until else None
         response = self._client.query_points(
             self._collection,
             query=vector,
@@ -132,7 +139,9 @@ class EvidenceStore:
             with_payload=True,
             query_filter=models.Filter(
                 should=[
-                    models.FieldCondition(key="published_ts", range=models.Range(gte=since_ts)),
+                    models.FieldCondition(
+                        key="published_ts", range=models.Range(gte=since_ts, lte=until_ts)
+                    ),
                     models.FieldCondition(
                         key="source_kind",
                         match=models.MatchValue(value=SourceKind.FACT_CHECK.value),
@@ -161,12 +170,20 @@ def news_since(claim: Claim, seen_on: date) -> date:
     return (claim.claimed_date or seen_on) - NEWS_WINDOW
 
 
-def retrieve(claim: Claim, store: EvidenceStore, embed: EmbedText, since: date) -> Evidence:
+def news_until(claim: Claim, posted: date | None) -> date | None:
+    """End of the news window, when the claim or the post dates the event."""
+    anchor = claim.claimed_date or posted
+    return anchor + NEWS_AFTER if anchor else None
+
+
+def retrieve(
+    claim: Claim, store: EvidenceStore, embed: EmbedText, since: date, until: date | None = None
+) -> Evidence:
     queries = queries_for(claim)
     scores: dict[str, float] = {}
     payloads: dict[str, dict[str, Any]] = {}
     for vector in embed(queries):
-        for rank, payload in enumerate(store.search(vector, since)):
+        for rank, payload in enumerate(store.search(vector, since, until)):
             pid: str = payload["passage_id"]
             scores[pid] = scores.get(pid, 0.0) + 1.0 / (RRF_K + rank + 1)
             payloads[pid] = payload

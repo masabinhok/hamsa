@@ -27,7 +27,7 @@ from app.pipeline.contracts import (
 )
 from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
-from app.pipeline.retrieve import EmbedText, EvidenceStore, news_since, retrieve
+from app.pipeline.retrieve import EmbedText, EvidenceStore, news_since, news_until, retrieve
 from app.pipeline.verdict import Reasoner, judge
 from app.router.route import StageOutputs, route
 
@@ -133,6 +133,7 @@ def run(
                 pipeline.evidence,
                 pipeline.embed_text,
                 news_since(claim, seen_on or date.today()),
+                news_until(claim, seen_on),
             ),
             pipeline.find_reviews(claim) if pipeline.find_reviews else [],
         ),
@@ -148,6 +149,7 @@ def run(
             evidence,
             pipeline.reasoners,
             has_media=bool(frames),
+            posted_on=seen_on,
             checker=pipeline.nepali_checker,
         ),
     )
