@@ -34,6 +34,8 @@ about, e.g. "रसुवा") and in on-screen text (e.g. "Columbia Glacier"). 
 the original script; "मेलम्ची बजार" is one place, not two.
 - claimed_date: only if the post states a Gregorian date (YYYY-MM-DD); null for \
 Nepali calendar dates and when no date is stated.
+- claimed_year: the year the post says the event happened, exactly as written, whether \
+Gregorian (2015) or Nepali calendar (२०८२ is 2082); null if no year is stated.
 - numbers: every number the claim depends on (deaths, missing, rainfall, money); \
 unit and refers_to in English, e.g. value 50, unit "people", refers_to "missing".
 - visible_text: on-screen text in the frames (captions, banners, signs), verbatim.

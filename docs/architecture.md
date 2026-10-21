@@ -85,6 +85,7 @@ Each stage returns a Pydantic model. Model outputs are requested with a JSON sch
 | `claim_en` | str | retrieval (cross-lingual), verdict |
 | `places` | list of str | retrieval query, verdict |
 | `claimed_date` | date or null | "predates the incident" check |
+| `claimed_year` | int or null | the same check when only a year is stated, Gregorian or Bikram Sambat |
 | `numbers` | list of `{value, unit, refers_to}` | verdict (checks death tolls and similar) |
 | `visible_text` | list of str | retrieval, verdict |
 | `watermarks` | list of str | router (AI-tool marks such as Veo, Sora, Gemini) |

@@ -34,6 +34,8 @@ class Claim(Contract):
     claim_en: NonEmptyStr
     places: list[NonEmptyStr] = []
     claimed_date: date | None = None
+    # As written: Gregorian (2015) or Bikram Sambat (2072); the router tells them apart.
+    claimed_year: int | None = None
     numbers: list[ClaimedNumber] = []
     visible_text: list[NonEmptyStr] = []
     watermarks: list[NonEmptyStr] = []
