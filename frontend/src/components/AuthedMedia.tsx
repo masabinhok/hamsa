@@ -64,7 +64,12 @@ export function AuthedMedia({
   }
 
   if (failed) return <p className={styles.quiet}>This file could not be loaded.</p>;
-  if (!media) return <div className={styles.mediaPlaceholder} aria-label="Loading media" />;
+  if (!media)
+    return (
+      <div className={styles.mediaPlaceholder} role="status">
+        <span className="visually-hidden">Loading media</span>
+      </div>
+    );
   const player = media.video ? (
     <video
       ref={videoRef}

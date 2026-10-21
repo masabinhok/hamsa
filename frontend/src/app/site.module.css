@@ -439,6 +439,12 @@
   animation: pulse 1.6s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .step[data-state="now"]::after {
+    animation: none;
+  }
+}
+
 @keyframes pulse {
   50% {
     box-shadow: 0 0 0 0.35rem var(--glacier-wash);

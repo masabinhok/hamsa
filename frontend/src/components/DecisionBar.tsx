@@ -12,7 +12,7 @@ const LABELS: Label[] = ["false", "misleading", "true", "unverifiable"];
 
 export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: (c: DeskCase) => void }) {
   const { token, name } = useChecker();
-  const { items, refresh } = useQueue();
+  const { items, refresh, announce } = useQueue();
   const router = useRouter();
   const draft = found.outputs?.verdict ?? null;
 
@@ -24,20 +24,20 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
   const [note, setNote] = useState("");
   const [original, setOriginal] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   async function send(decision: Decision, done: string) {
     setBusy(true);
-    setMessage(null);
+    setFailure(null);
     try {
       const updated = await desk.decide(token, found.id, decision);
       await refresh();
-      setMessage(done);
+      announce(`${done}: ${found.claim_en ?? found.text ?? found.id}`);
       onDecided(updated);
       const next = items?.find((item) => item.id !== found.id);
       if (next && decision.action !== "reopen") router.push(`/desk/${next.id}`);
     } catch (caught) {
-      setMessage(caught instanceof ApiError ? caught.message : "The decision was not saved. Try again.");
+      setFailure(caught instanceof ApiError ? caught.message : "The decision was not saved. Try again.");
     } finally {
       setBusy(false);
     }
@@ -57,7 +57,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         ...(edited ? { rationale_en: rationaleEn, rationale_ne: rationaleNe } : {}),
         ...(refuting && original.trim() ? { original_url: original.trim() } : {}),
       },
-      "Published.",
+      `Published as ${labelName[label].en.toLowerCase()}`,
     );
   }
 
@@ -68,7 +68,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         className={styles.bar}
         onSubmit={(event) => {
           event.preventDefault();
-          send({ action: "reopen", checker: name, note: note || "reopened" }, "Reopened.");
+          send({ action: "reopen", checker: name, note: note || "reopened" }, "Reopened");
         }}
       >
         <div className={styles.actions}>
@@ -86,9 +86,9 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
             aria-label="Reason for reopening"
           />
           <button className={styles.secondary} disabled={busy}>
-            Reopen
+            {busy ? "Reopening…" : "Reopen"}
           </button>
-          {message && <p className={styles.message} role="status">{message}</p>}
+          {failure && <p className={styles.failure} role="alert">{failure}</p>}
         </div>
       </form>
     );
@@ -102,7 +102,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         className={styles.bar}
         onSubmit={(event) => {
           event.preventDefault();
-          send({ action: "reject", checker: name, note }, "Rejected.");
+          send({ action: "reject", checker: name, note }, "Rejected");
         }}
       >
         <div className={styles.actions}>
@@ -116,12 +116,12 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
             aria-label="Reason for rejecting"
           />
           <button className={styles.danger} disabled={busy || !note.trim()}>
-            Reject case
+            {busy ? "Rejecting…" : "Reject case"}
           </button>
           <button type="button" className={styles.link} onClick={() => setRejecting(false)}>
             Cancel
           </button>
-          {message && <p className={styles.message} role="status">{message}</p>}
+          {failure && <p className={styles.failure} role="alert">{failure}</p>}
         </div>
       </form>
     );
@@ -173,7 +173,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
           />
         )}
         <button className={styles.primary} disabled={busy || !label}>
-          {label ? `Publish as ${labelName[label].en.toLowerCase()}` : "Publish"}
+          {busy ? "Publishing…" : label ? `Publish as ${labelName[label].en.toLowerCase()}` : "Publish"}
         </button>
         {draft && (
           <button type="button" className={styles.link} onClick={() => setEditing(!editing)}>
@@ -183,7 +183,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         <button type="button" className={styles.link} onClick={() => setRejecting(true)}>
           Reject
         </button>
-        {message && <p className={styles.message} role="status">{message}</p>}
+        {failure && <p className={styles.failure} role="alert">{failure}</p>}
       </div>
     </form>
   );

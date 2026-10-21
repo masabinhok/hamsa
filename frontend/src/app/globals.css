@@ -32,6 +32,17 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   --space-7: 3rem;
+
+  /* Motion. Every duration and easing comes from here; exits run at about 3/4 of entrances. */
+  --dur-micro: 150ms; /* press, hover, focus */
+  --dur-short: 200ms; /* small state changes, fades */
+  --dur-medium: 300ms; /* case and page transitions; also the wait before showing "loading" */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1); /* entrances */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exits */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* moves within the screen */
+  /* How far things travel. Reduced motion zeroes these, so every animation becomes a fade. */
+  --shift: 12px;
+  --press: 0.97;
 }
 
 *,
@@ -90,11 +101,12 @@ textarea {
   white-space: nowrap;
 }
 
+/* Keep the feedback, drop the movement: fades only, none longer than 150ms. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition: none !important;
-    animation: none !important;
+  :root {
+    --shift: 0px;
+    --press: 1;
+    --dur-short: 150ms;
+    --dur-medium: 150ms;
   }
 }
