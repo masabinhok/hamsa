@@ -29,6 +29,7 @@ from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
 from app.pipeline.retrieve import EmbedText, EvidenceStore, news_since, news_until, retrieve
 from app.pipeline.verdict import Reasoner, judge
+from app.pipeline.web_search import FindWeb, add_web
 from app.router.route import StageOutputs, route
 
 Extract = Callable[[str | None, Sequence[Frame]], Claim]
@@ -45,6 +46,8 @@ class Pipeline:
     nepali_checker: tuple[Reasoner, str] | None = None
     # Fact-checks published anywhere (ADR 0012); None without an API key.
     find_reviews: FindReviews | None = None
+    # Pages found by web search; None without SearXNG.
+    find_web: FindWeb | None = None
 
 
 @dataclass
@@ -126,17 +129,15 @@ def run(
     matched: MediaMatch | None = stage(
         Stage.MEDIA_MATCH, lambda: match_media(frames, pipeline.archive, pipeline.embed_image)
     )
+    since, until = news_since(claim, seen_on or date.today()), news_until(claim, seen_on)
     evidence: Evidence | None = stage(
         Stage.RETRIEVE,
-        lambda: add_reviews(
-            retrieve(
-                claim,
-                pipeline.evidence,
-                pipeline.embed_text,
-                news_since(claim, seen_on or date.today()),
-                news_until(claim, seen_on),
+        lambda: add_web(
+            add_reviews(
+                retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
+                pipeline.find_reviews(claim) if pipeline.find_reviews else [],
             ),
-            pipeline.find_reviews(claim) if pipeline.find_reviews else [],
+            pipeline.find_web(claim, since, until) if pipeline.find_web else [],
         ),
     )
     if matched is None or evidence is None:

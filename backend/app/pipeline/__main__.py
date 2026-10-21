@@ -23,6 +23,7 @@ from app.pipeline.media_match import ArchiveIndex, SiglipEmbedder
 from app.pipeline.retrieve import EvidenceStore
 from app.pipeline.run import Pipeline, Result, run
 from app.pipeline.verdict import Reasoner
+from app.pipeline.web_search import WebSearch
 
 
 def build_pipeline(settings: Settings) -> Pipeline:
@@ -60,6 +61,7 @@ def build_pipeline(settings: Settings) -> Pipeline:
             if settings.fact_check_api_key and checker
             else None
         ),
+        find_web=WebSearch(str(settings.searxng_url), embed_text) if settings.searxng_url else None,
     )
 
 

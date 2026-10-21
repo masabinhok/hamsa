@@ -91,6 +91,13 @@ class _MetaTags(HTMLParser):
             self.tags.setdefault(key, content)
 
 
+def meta_tags(markup: str) -> dict[str, str]:
+    """A page's <meta> properties (og:*, article:*), first value of each."""
+    parser = _MetaTags()
+    parser.feed(markup)
+    return parser.tags
+
+
 def preview(url: str, folder: Path, http: httpx.Client | None = None) -> Downloaded:
     """The caption and picture of a post's link preview. For a video this is one still, so
     a checker may still need the file. Raises when the page has neither."""
@@ -99,9 +106,7 @@ def preview(url: str, folder: Path, http: httpx.Client | None = None) -> Downloa
     )
     page = http.get(url)
     page.raise_for_status()
-    parser = _MetaTags()
-    parser.feed(page.text)
-    tags = parser.tags
+    tags = meta_tags(page.text)
     caption = (tags.get("og:description") or "").strip() or None
     files: list[Path] = []
     if image_url := tags.get("og:image"):

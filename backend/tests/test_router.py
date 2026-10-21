@@ -445,3 +445,12 @@ def test_a_real_event_does_not_vouch_for_unidentified_footage() -> None:
     decision = route(outputs(passages=NEWS, verdict=unseen))
     assert decision.route is Route.HUMAN_REVIEW
     assert decision.reasons == ["the event is confirmed but nothing shows the footage is from it"]
+
+
+def test_web_pages_never_count_as_independent_sources() -> None:
+    web = [
+        passage("p1", "site-a.test", source_kind="web"),
+        passage("p2", "site-b.test", source_kind="web"),
+    ]
+    decision = route(outputs(passages=web, verdict=verdict("false", 0.95, citations=TWO_REFUTE)))
+    assert decision.route is Route.HUMAN_REVIEW

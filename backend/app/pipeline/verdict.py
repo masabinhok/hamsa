@@ -90,6 +90,9 @@ false and misleading need a finding that contradicts the claim. When nothing fou
 contradicts it and nothing confirms it, the label is unverifiable: a claim no passage \
 supports is unverified, not false.
 
+Passages marked "web" come from an open web search, not the trusted outlets: use them, \
+but prefer a trusted passage that says the same.
+
 citations: at most {MAX_CITATIONS} passages your decision relies on, the most direct \
 first, by label, with their stance toward the claim: "supports" or "refutes". Cite \
 nothing you did not use and nothing about another event.

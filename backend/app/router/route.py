@@ -242,7 +242,9 @@ def _agreeing_sources(verdict: Verdict, evidence: Evidence) -> list[str]:
     sources: list[str] = []
     for citation in verdict.citations:
         passage = evidence.by_id(citation.passage_id)
-        if passage and citation.stance is expected and passage.source not in sources:
+        # Web pages are untrusted: shown to the checker, never a reason to skip one.
+        trusted = passage and passage.source_kind is not SourceKind.WEB
+        if passage and trusted and citation.stance is expected and passage.source not in sources:
             sources.append(passage.source)
     return sources
 
