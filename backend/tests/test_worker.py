@@ -141,6 +141,23 @@ def test_a_pasted_link_is_fetched_and_checked_like_an_upload(db: Database, tmp_p
         assert len(session.get_one(Case, "c1").media) == 1
 
 
+def test_the_posts_caption_leads_and_the_senders_note_follows(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, "is this real?", "https://x.com/a/status/1", [])
+
+    def fetch(url: str, folder: Path) -> Downloaded:
+        return Downloaded([], "बुढीगण्डकीमा बाढी")
+
+    seen: list[str | None] = []
+
+    def runner(text: str | None, media: Sequence[Path]) -> Result:
+        seen.append(text)
+        return routed_result()
+
+    assert process_next(db, runner, tmp_path, fetch) == "c1"
+    assert seen == ["बुढीगण्डकीमा बाढी\n\nSender's note: is this real?"]
+
+
 def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_path: Path) -> None:
     add_link_case(db, "c1")
 

@@ -149,6 +149,12 @@ def _entity_text(text: str, entity: dict[str, Any]) -> str:
     return units[start : start + length].decode("utf-16-le")
 
 
+def _without_links(text: str, entities: Iterable[dict[str, Any]]) -> str:
+    for link in [_entity_text(text, e) for e in entities if e.get("type") == "url"]:
+        text = text.replace(link, "")
+    return text
+
+
 def _first_url(text: str, entities: Iterable[dict[str, Any]]) -> str | None:
     for entity in entities:
         if entity.get("type") == "url":
@@ -210,8 +216,10 @@ def submissions(updates: Iterable[dict[str, Any]]) -> list[Submission]:
             post.command = text.split()[0].split("@")[0]
             continue
         if text.strip():
-            post.text = text.strip()
             post.url = post.url or _first_url(text, entities)
+            # A bare link is no claim; leaving the text empty lets the post's caption be one.
+            if _without_links(text, entities).strip():
+                post.text = text.strip()
         post.files.extend(_files(message))
     return found
 

@@ -143,6 +143,14 @@ def test_hidden_links_and_commands_are_read() -> None:
     assert start.command == "/start"
 
 
+def test_a_bare_link_leaves_the_text_for_the_posts_caption() -> None:
+    link = "https://www.facebook.com/share/v/1abc/"
+    [post] = submissions(
+        [message(1, text=f" {link} ", entities=[{"type": "url", "offset": 1, "length": len(link)}])]
+    )
+    assert (post.text, post.url) == (None, link)
+
+
 # creating cases
 
 
