@@ -48,10 +48,12 @@ class Scored:
 class WithoutFactChecks(EvidenceStore):
     """Simulates a post nobody has debunked yet."""
 
-    def search(self, vector: list[float], since: date) -> list[dict[str, Any]]:
+    def search(
+        self, vector: list[float], since: date, until: date | None = None
+    ) -> list[dict[str, Any]]:
         # shortcut: filters after the candidate limit, so fewer passages reach the reranker;
         # fine for an ablation, query with a must_not filter if this becomes a headline number.
-        kept = super().search(vector, since)
+        kept = super().search(vector, since, until)
         return [p for p in kept if p.get("source_kind") != SourceKind.FACT_CHECK.value]
 
 
