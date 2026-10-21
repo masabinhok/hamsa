@@ -61,6 +61,10 @@ export interface Verdict {
   rationale_en: string;
   rationale_ne: string;
   citations: { passage_id: string; stance: Stance }[];
+  // Null on verdicts drafted before findings were asked for.
+  media_finding?: string | null;
+  event_finding?: string | null;
+  number_finding?: string | null;
   model: string;
   fallback: boolean;
 }
