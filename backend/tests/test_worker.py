@@ -1,8 +1,10 @@
 import subprocess
 from collections.abc import Sequence
 from datetime import date
+from functools import partial
 from pathlib import Path
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -216,6 +218,58 @@ def test_download_retries_without_the_browser_login(
         tmp_path / "post.mp4"
     ]
     assert ["--cookies-from-browser" in c for c in commands] == [True, False]
+
+
+PREVIEW_PAGE = """<html><head>
+<meta property="og:title" content="Nepal Mount Everest" />
+<meta property="og:description" content="UPDATE: 403 Tourists Missing &amp; Out of Contact" />
+<meta property="og:image" content="https://cdn.test/photo?media_id=1&amp;s=2" />
+<meta property="article:published_time" content="2026-08-28T06:15:00+00:00" />
+</head></html>"""
+
+
+def test_a_post_yt_dlp_cannot_open_falls_back_to_its_link_preview(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingest import download as module
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(1, command, stderr="HTTP Error 404: Not Found")
+
+    requested: list[str] = []
+
+    def site(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if request.url.host == "cdn.test":
+            return httpx.Response(200, content=b"\xff\xd8\xff photo")
+        return httpx.Response(200, text=PREVIEW_PAGE)
+
+    client = httpx.Client(transport=httpx.MockTransport(site))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module, "preview", partial(module.preview, http=client))
+
+    post = module.download("https://www.facebook.com/share/p/1/", tmp_path)
+
+    assert post.caption == "UPDATE: 403 Tourists Missing & Out of Contact"
+    assert post.uploaded == date(2026, 8, 28)
+    assert [f.read_bytes() for f in post.files] == [b"\xff\xd8\xff photo"]
+    assert requested[1] == "https://cdn.test/photo?media_id=1&s=2"
+
+
+def test_a_post_with_no_preview_either_raises_the_download_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingest import download as module
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(1, command, stderr="Cannot parse data")
+
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, text="")))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module, "preview", partial(module.preview, http=client))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module.download("https://www.facebook.com/share/r/1/", tmp_path)
 
 
 def test_published_cases_are_learned_once_and_failures_recorded(db: Database) -> None:
