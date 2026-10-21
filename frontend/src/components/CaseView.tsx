@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { desk, type ArchiveHit, type DeskCase, type Passage, type Verdict } from "@/lib/api";
+import { useQueue } from "@/lib/queue";
 import { useChecker } from "@/lib/session";
 import { describeEvent, labelName, sentence } from "@/lib/words";
 import { AuthedMedia } from "./AuthedMedia";
@@ -15,10 +16,23 @@ function lang(text: string): "ne" | "en" {
   return DEVANAGARI.test(text) ? "ne" : "en";
 }
 
+// The case on screen before this one: moving up the queue (k) enters from above, down from below.
+let lastShown: string | null = null;
+
 export function CaseView({ id }: { id: string }) {
   const { token } = useChecker();
+  const { items } = useQueue();
   const [found, setFound] = useState<DeskCase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [direction] = useState(() => {
+    const order = (items ?? []).map((item) => item.id);
+    const [from, to] = [order.indexOf(lastShown ?? ""), order.indexOf(id)];
+    return from !== -1 && to !== -1 && to < from ? "back" : "next";
+  });
+
+  useEffect(() => {
+    lastShown = id;
+  }, [id]);
 
   const load = useCallback(async () => {
     try {
@@ -41,9 +55,19 @@ export function CaseView({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [pending, load]);
 
-  if (error) return <p className={styles.notice}>{error}</p>;
+  if (error) {
+    return (
+      <div className={styles.notice} role="alert">
+        <p>{error}</p>
+        <button type="button" className={styles.retry} onClick={load}>
+          Try again
+        </button>
+      </div>
+    );
+  }
   const current = found;
-  if (!current) return <p className={styles.notice}>Loading the case…</p>;
+  // Shown only if loading outlasts --dur-medium, so a quick load never flashes it.
+  if (!current) return <p className={`${styles.notice} ${styles.waiting}`}>Loading the case…</p>;
   if (pending) {
     return (
       <p className={styles.notice}>
@@ -61,7 +85,15 @@ export function CaseView({ id }: { id: string }) {
   const weak = hits.filter((hit) => !isStrong(hit)).slice(0, 3);
 
   return (
-    <article className={styles.case}>
+    <article
+      className={styles.case}
+      data-enter={direction}
+      tabIndex={-1}
+      // A decision unmounts the button that had focus; land keyboard users on the new case.
+      ref={(node) => {
+        if (node && document.activeElement === document.body) node.focus({ preventScroll: true });
+      }}
+    >
       <div className={styles.body}>
         <header className={styles.claimBlock}>
           {claim ? (

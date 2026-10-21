@@ -48,6 +48,38 @@
   min-width: 0;
 }
 
+/* Purpose C, confirmation: the decision was saved, even though the case on screen changed.
+   Fixed, so it never shifts the layout; it carries no actions, so it never takes a click. */
+.notice {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 10;
+  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-4);
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--milk);
+  box-shadow: 0 4px 16px rgb(22 50 59 / 0.2);
+  pointer-events: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateY(calc(-1 * var(--shift)));
+  transition:
+    opacity var(--dur-micro) var(--ease-in),
+    transform var(--dur-micro) var(--ease-in);
+}
+
+.notice[data-shown] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-short) var(--ease-out),
+    transform var(--dur-short) var(--ease-out);
+}
+
 @media (max-width: 52rem) {
   .desk {
     grid-template-columns: 1fr;

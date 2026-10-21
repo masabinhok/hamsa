@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DeskSummary, Route } from "@/lib/api";
 import { useQueue } from "@/lib/queue";
 import { labelName, reasonTag, routeGroup, routeOrder, timeAgo } from "@/lib/words";
@@ -13,6 +13,14 @@ export function Queue() {
   const params = useParams<{ id?: string }>();
   const router = useRouter();
   const ordered = useMemo(() => items ?? [], [items]);
+  // Set once the first queue has rendered: anything mounting after that arrived meanwhile.
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (items === null || loaded) return;
+    const timer = setTimeout(() => setLoaded(true), 0);
+    return () => clearTimeout(timer);
+  }, [items, loaded]);
 
   // j / k move through the queue, as in mail clients; ignored while typing.
   useEffect(() => {
@@ -48,7 +56,13 @@ export function Queue() {
           </h2>
           <ol className={styles.list}>
             {group.map((item) => (
-              <QueueItem key={item.id} item={item} route={route} current={item.id === params.id} />
+              <QueueItem
+                key={item.id}
+                item={item}
+                route={route}
+                current={item.id === params.id}
+                arrived={loaded}
+              />
             ))}
           </ol>
         </section>
@@ -60,10 +74,22 @@ export function Queue() {
   );
 }
 
-function QueueItem({ item, route, current }: { item: DeskSummary; route: Route; current: boolean }) {
+function QueueItem({
+  item,
+  route,
+  current,
+  arrived,
+}: {
+  item: DeskSummary;
+  route: Route;
+  current: boolean;
+  arrived: boolean;
+}) {
   const title = item.claim_en ?? item.text ?? "Media without text";
+  // Frozen at mount: flipping it later would restart the animation on every item.
+  const [fresh] = useState(arrived);
   return (
-    <li>
+    <li className={styles.row} data-arrived={fresh ? "" : undefined}>
       <Link
         href={`/desk/${item.id}`}
         className={styles.item}
