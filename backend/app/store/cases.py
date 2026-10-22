@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -271,6 +271,8 @@ def outputs_to_json(outputs: StageOutputs) -> dict[str, Any]:
         "media_match": dump(outputs.media_match),
         "evidence": dump(outputs.evidence),
         "verdict": dump(outputs.verdict),
+        "seen_on": outputs.seen_on.isoformat() if outputs.seen_on else None,
+        "posted_on": outputs.posted_on.isoformat() if outputs.posted_on else None,
     }
 
 
@@ -285,7 +287,14 @@ def outputs_from_json(data: dict[str, Any]) -> StageOutputs:
         media_match=load(MediaMatch, data["media_match"]),
         evidence=load(Evidence, data["evidence"]),
         verdict=load(Verdict, data["verdict"]),
+        # Absent from cases stored before the post's date was kept.
+        seen_on=_day(data.get("seen_on")),
+        posted_on=_day(data.get("posted_on")),
     )
+
+
+def _day(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
 
 
 def _event(

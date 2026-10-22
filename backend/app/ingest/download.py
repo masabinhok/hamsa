@@ -107,6 +107,10 @@ def preview(url: str, folder: Path, http: httpx.Client | None = None) -> Downloa
     page = http.get(url)
     page.raise_for_status()
     tags = meta_tags(page.text)
+    # A blocked or removed post serves the platform's own landing preview, typed "website"
+    # (TikTok: its logo and "Watch, follow, and discover more trending content.").
+    if tags.get("og:type") == "website":
+        raise ValueError(f"no post preview at {url}, only the site's")
     caption = (tags.get("og:description") or "").strip() or None
     files: list[Path] = []
     if image_url := tags.get("og:image"):

@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -91,6 +91,8 @@ def test_outputs_round_trip_through_json() -> None:
         hits=[hit()],
         passages=[passage("p1", "Nepal Factcheck")],
         verdict=verdict("false", 0.9, citations=[cite("p1")]),
+        seen_on=date(2026, 8, 27),
+        posted_on=date(2026, 8, 27),  # the router needs it to judge figures
     )
     assert outputs_from_json(outputs_to_json(original)) == original
 
