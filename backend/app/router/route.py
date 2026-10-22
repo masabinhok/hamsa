@@ -138,21 +138,24 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         and label is not VerdictLabel.UNVERIFIABLE
         and verdict.confidence >= thresholds.fast_track_confidence
     )
+    # Text about some video is not proof about this one: on live posts (2026-10-22) checks
+    # of an AI copy and of other videos landed on genuine BBC, Sky and CNN footage.
+    unseen = _footage_decides(verdict) and not any(is_strong_match(h) for h in media.hits)
     unconfirmed: list[str] = []
     if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
-        # A fact-check is about a claim, not provably this file: on live posts (2026-10-22)
-        # checks of an AI copy and of other videos landed on genuine footage, 4 of 8 times.
-        if not _shows_footage(verdict) or any(is_strong_match(h) for h in media.hits):
+        if not unseen:
             return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
         unconfirmed = [
             f"prior fact-check agrees ({', '.join(checkers)}), "
             "but no frame match shows it checked this footage"
         ]
     if confident and len(agreeing) >= thresholds.min_independent_sources:
-        return decide(
-            Route.FAST_TRACK,
-            [f"strong evidence: {len(agreeing)} independent sources ({', '.join(agreeing)})"],
-        )
+        reason = f"{len(agreeing)} independent sources ({', '.join(agreeing)})"
+        if not unseen:
+            return decide(Route.FAST_TRACK, [f"strong evidence: {reason}"])
+        unconfirmed = unconfirmed or [
+            f"{reason} agree, but no frame match ties them to this footage"
+        ]
 
     if not evidence.passages and not media.hits:
         return decide(Route.INVESTIGATE, ["new claim: no evidence and no archive match"])
@@ -218,9 +221,20 @@ def _is_older_footage(
     return (reference - hit.original_date).days > t.same_event_days
 
 
-def _shows_footage(verdict: Verdict) -> bool:
-    """False for text posts, and for verdicts drafted before findings were asked for."""
-    return verdict.media_finding not in (None, MediaFinding.NO_MEDIA)
+def _footage_decides(verdict: Verdict) -> bool:
+    """The label rests on what the footage is, not on the post's words or figures.
+
+    False for text posts, and for verdicts drafted before findings were asked for.
+    """
+    if verdict.media_finding in (None, MediaFinding.NO_MEDIA):
+        return False
+    if verdict.label is VerdictLabel.TRUE:
+        return True
+    words_refuted = (
+        verdict.event_finding is EventFinding.CONTRADICTED
+        or verdict.number_finding is NumberFinding.CONTRADICTED
+    )
+    return verdict.media_finding in FOOTAGE_REFUTED and not words_refuted
 
 
 def _found_refuting(verdict: Verdict) -> bool:

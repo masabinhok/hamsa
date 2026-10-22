@@ -472,17 +472,19 @@ def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() ->
 
 
 @pytest.mark.parametrize(
-    ("media", "hits", "route_to"),
+    ("media", "event", "hits", "route_to"),
     [
-        ("ai_generated", [], Route.HUMAN_REVIEW),  # the BBC rescue, matched to its AI copy
-        ("ai_generated", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
-        ("no_media", [], Route.FAST_TRACK),  # a text claim: the fact-check is about it
+        # The BBC rescue, matched to the fact-check of its AI copy: only footage decides.
+        ("ai_generated", "not_found", [], Route.HUMAN_REVIEW),
+        ("ai_generated", "not_found", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
+        ("no_media", "contradicted", [], Route.FAST_TRACK),  # a text claim
+        ("elsewhere", "contradicted", [], Route.FAST_TRACK),  # its words are refuted too
     ],
 )
 def test_a_fact_check_alone_does_not_fast_track_footage(
-    media: str, hits: list[ArchiveHit], route_to: Route
+    media: str, event: str, hits: list[ArchiveHit], route_to: Route
 ) -> None:
-    checked = verdict("false", 0.9, citations=[cite("p1")], **findings(media, "contradicted"))
+    checked = verdict("false", 0.9, citations=[cite("p1")], **findings(media, event))
     decision = route(outputs(passages=FACT_CHECK, hits=hits, verdict=checked))
     assert decision.route is route_to
     if route_to is Route.HUMAN_REVIEW:
@@ -490,3 +492,13 @@ def test_a_fact_check_alone_does_not_fast_track_footage(
             "prior fact-check agrees (Nepal Factcheck), "
             "but no frame match shows it checked this footage"
         ]
+
+
+def test_two_sources_do_not_fast_track_unseen_footage() -> None:
+    two = verdict("false", 0.9, citations=TWO_REFUTE, **findings("elsewhere"))
+    decision = route(outputs(passages=NEWS, verdict=two))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == [
+        "2 independent sources (Onlinekhabar, Nepalnews) agree, "
+        "but no frame match ties them to this footage"
+    ]
