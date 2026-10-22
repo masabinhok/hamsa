@@ -141,10 +141,10 @@ def test_only_reviews_judged_about_this_post_are_kept() -> None:
         return httpx.Response(200, text="<p>The video of the Columbia Glacier</p>")
 
     judge = FakeReasoner(
-        {"same_claim": False, "why": "a roundup of other flood videos"},
+        answer(False, "a roundup of other flood videos"),
         StructuredOutputError("no json"),  # unjudged: dropped, never let through
-        {"same_claim": True, "why": "same Columbia Glacier footage"},
-        {"same_claim": True, "why": "same claim"},
+        answer(True, "a glacier collapsing", fits=True),
+        answer(True, "not described"),  # a claim about a cause, not a video
     )
     http = httpx.Client(transport=httpx.MockTransport(site))
     kept = same_claim_only(search, (judge, "gate-model"), http)(claim(visible_text=["Juneau"]))
@@ -154,3 +154,22 @@ def test_only_reviews_judged_about_this_post_are_kept() -> None:
     assert "Juneau" in judge.prompts[0]
     assert "Article:" not in judge.prompts[0]
     assert "Columbia Glacier" in judge.prompts[2]
+
+
+def answer(same: bool, footage: str, *, fits: bool = False) -> dict[str, object]:
+    return {
+        "checked_footage": footage,
+        "footage_fits_scene": fits,
+        "same_claim": same,
+        "why": "",
+    }
+
+
+def test_a_fact_check_of_other_footage_never_covers_a_post_that_shows_footage() -> None:
+    from app.pipeline.claim_reviews import SameClaim
+
+    sky = claim(scene="a reporter by a muddy river, then officials at a table")
+    other = SameClaim.model_validate(answer(True, "an old video from Pakistan"))
+    assert not other.covers(sky)  # the Sky News report, drafted false on this
+    assert other.covers(claim())  # a text post has no footage to differ
+    assert SameClaim.model_validate(answer(True, "not described")).covers(sky)
