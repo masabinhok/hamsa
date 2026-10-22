@@ -299,9 +299,14 @@ def _conflicts(
         conflicts.append(f"Nepali rationale needs a checker: {verdict.nepali_issue}")
 
     expected = _expected_stance(verdict.label)
+    # Footage from elsewhere makes a post false even when the event is real, so a report
+    # confirming the event is no conflict (it sent 10 correct recycled verdicts to a human).
+    event_only = verdict.label in REFUTING_LABELS and verdict.media_finding in FOOTAGE_REFUTED
     if expected is not None:
         for citation in verdict.citations:
             passage = evidence.by_id(citation.passage_id)
+            if event_only and citation.stance is Stance.SUPPORTS:
+                continue
             if passage and citation.stance is not expected:
                 conflicts.append(f"cited {passage.source} {citation.stance} the claim")
     return conflicts
