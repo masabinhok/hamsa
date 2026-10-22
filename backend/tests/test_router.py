@@ -454,3 +454,17 @@ def test_web_pages_never_count_as_independent_sources() -> None:
     ]
     decision = route(outputs(passages=web, verdict=verdict("false", 0.95, citations=TWO_REFUTE)))
     assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() -> None:
+    elsewhere = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("elsewhere", "confirmed")
+    )
+    decision = route(outputs(hits=[hit()], passages=NEWS, verdict=elsewhere))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["recycled media: matches 2023 Himachal Pradesh floods, Kullu"]
+    # Without a finding that the footage is wrong, the same citation is still a conflict.
+    unseen = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("not_established")
+    )
+    assert route(outputs(hits=[hit()], passages=NEWS, verdict=unseen)).route is Route.HUMAN_REVIEW
