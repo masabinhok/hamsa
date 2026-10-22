@@ -272,6 +272,27 @@ def test_a_post_with_no_preview_either_raises_the_download_error(
         module.download("https://www.facebook.com/share/r/1/", tmp_path)
 
 
+def test_a_platforms_own_landing_preview_is_not_taken_for_the_post(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingest import download as module
+
+    def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(1, command, stderr="Your IP address is blocked")
+
+    landing = """<meta property="og:type" content="website"/>
+<meta property="og:description" content="Watch, follow, and discover more trending content."/>
+<meta property="og:image" content="https://cdn.test/tiktok-logo.png"/>"""
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, text=landing))
+    )
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module, "preview", partial(module.preview, http=client))
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module.download("https://www.tiktok.com/@a/video/1", tmp_path)
+
+
 def test_published_cases_are_learned_once_and_failures_recorded(db: Database) -> None:
     from app.learn import Verdicted
     from app.store.cases import publish
