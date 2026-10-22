@@ -138,8 +138,16 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         and label is not VerdictLabel.UNVERIFIABLE
         and verdict.confidence >= thresholds.fast_track_confidence
     )
+    unconfirmed: list[str] = []
     if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
-        return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        # A fact-check is about a claim, not provably this file: on live posts (2026-10-22)
+        # checks of an AI copy and of other videos landed on genuine footage, 4 of 8 times.
+        if not _shows_footage(verdict) or any(is_strong_match(h) for h in media.hits):
+            return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        unconfirmed = [
+            f"prior fact-check agrees ({', '.join(checkers)}), "
+            "but no frame match shows it checked this footage"
+        ]
     if confident and len(agreeing) >= thresholds.min_independent_sources:
         return decide(
             Route.FAST_TRACK,
@@ -149,7 +157,7 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
     if not evidence.passages and not media.hits:
         return decide(Route.INVESTIGATE, ["new claim: no evidence and no archive match"])
 
-    reasons = conflicts or [_why_not_confident(verdict, agreeing, thresholds)]
+    reasons = conflicts or unconfirmed or [_why_not_confident(verdict, agreeing, thresholds)]
     return decide(Route.HUMAN_REVIEW, reasons)
 
 
@@ -208,6 +216,11 @@ def _is_older_footage(
     if reference is None:
         return False
     return (reference - hit.original_date).days > t.same_event_days
+
+
+def _shows_footage(verdict: Verdict) -> bool:
+    """False for text posts, and for verdicts drafted before findings were asked for."""
+    return verdict.media_finding not in (None, MediaFinding.NO_MEDIA)
 
 
 def _found_refuting(verdict: Verdict) -> bool:

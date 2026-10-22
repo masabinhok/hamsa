@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from app.pipeline.contracts import (
+    ArchiveHit,
     Duplicate,
     DuplicateBasis,
     Route,
@@ -468,3 +469,24 @@ def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() ->
         "false", 0.95, citations=[cite("p1", "supports")], **findings("not_established")
     )
     assert route(outputs(hits=[hit()], passages=NEWS, verdict=unseen)).route is Route.HUMAN_REVIEW
+
+
+@pytest.mark.parametrize(
+    ("media", "hits", "route_to"),
+    [
+        ("ai_generated", [], Route.HUMAN_REVIEW),  # the BBC rescue, matched to its AI copy
+        ("ai_generated", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
+        ("no_media", [], Route.FAST_TRACK),  # a text claim: the fact-check is about it
+    ],
+)
+def test_a_fact_check_alone_does_not_fast_track_footage(
+    media: str, hits: list[ArchiveHit], route_to: Route
+) -> None:
+    checked = verdict("false", 0.9, citations=[cite("p1")], **findings(media, "contradicted"))
+    decision = route(outputs(passages=FACT_CHECK, hits=hits, verdict=checked))
+    assert decision.route is route_to
+    if route_to is Route.HUMAN_REVIEW:
+        assert decision.reasons == [
+            "prior fact-check agrees (Nepal Factcheck), "
+            "but no frame match shows it checked this footage"
+        ]
