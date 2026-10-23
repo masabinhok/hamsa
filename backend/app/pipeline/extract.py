@@ -50,7 +50,10 @@ or the name of the app or tool that made the video, copied as shown. Empty if no
 - handles: usernames or page names visible in the text or frames, such as @name.
 - checkable: false only if the post makes no factual assertion (prayers, opinions, \
 condolences) and shows no disaster footage. Disaster footage shared with only an \
-exclamation or prayer is checkable: it is presented as a real event.
+exclamation or prayer is checkable: it is presented as a real event. So is a prayer or \
+condolence that names a disaster ("floods in Nepal, pray for Nepal"): it says that \
+disaster happened, so claim it as "A flood hit Nepal" in the post's words and place. A \
+prayer naming no disaster ("pray for Nepal") is not checkable.
 """
 
 
