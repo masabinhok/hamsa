@@ -478,7 +478,7 @@ def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() ->
         ("ai_generated", "not_found", [], Route.HUMAN_REVIEW),
         ("ai_generated", "not_found", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
         ("no_media", "contradicted", [], Route.FAST_TRACK),  # a text claim
-        ("elsewhere", "contradicted", [], Route.FAST_TRACK),  # its words are refuted too
+        ("elsewhere", "contradicted", [], Route.HUMAN_REVIEW),  # the check may refute it alone
     ],
 )
 def test_a_fact_check_alone_does_not_fast_track_footage(

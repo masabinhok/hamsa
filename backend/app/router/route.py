@@ -140,10 +140,13 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
     )
     # Text about some video is not proof about this one: on live posts (2026-10-22) checks
     # of an AI copy and of other videos landed on genuine BBC, Sky and CNN footage.
-    unseen = _footage_decides(verdict) and not any(is_strong_match(h) for h in media.hits)
+    framed = any(is_strong_match(h) for h in media.hits)
+    unseen = _footage_decides(verdict) and not framed
     unconfirmed: list[str] = []
     if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
-        if not unseen:
+        # Not unseen alone: the matched check is often the only thing "contradicting" the
+        # words too (live L29: BOOM's check of an AI copy of the real police rescue).
+        if framed or verdict.media_finding in (None, MediaFinding.NO_MEDIA):
             return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
         unconfirmed = [
             f"prior fact-check agrees ({', '.join(checkers)}), "

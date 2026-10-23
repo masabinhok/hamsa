@@ -7,7 +7,7 @@ carry ClaimReview markup, which this API indexes. It is a search index, not a mo
 
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import httpx
@@ -35,6 +35,7 @@ ARTICLE_CHARS = 2500  # four of these and the verdict fit Groq's 8000 tokens a m
 log = logging.getLogger("hamsa.claim_reviews")
 
 FindReviews = Callable[[Claim], list[Passage]]
+Vet = Callable[[Claim, Sequence[Passage], int | None], list[Passage]]
 
 
 def review_queries(claim: Claim) -> list[str]:
@@ -106,6 +107,22 @@ class ClaimReviewSearch:
         return [found[url] for url in sorted(found, key=lambda u: scores[u], reverse=True)]
 
 
+def vetted(claim: Claim, evidence: Evidence, vet: Vet | None) -> Evidence:
+    """Corpus fact-checks pass the same check as searched ones: a corpus check of another
+    project's tunnel refuted a genuine rescue post (live L31, 2026-10-22)."""
+    if vet is None:
+        return evidence
+    checks = [p for p in evidence.passages if p.source_kind is SourceKind.FACT_CHECK]
+    kept = {p.passage_id for p in vet(claim, checks, None)}
+    return Evidence(
+        passages=[
+            p
+            for p in evidence.passages
+            if p.source_kind is not SourceKind.FACT_CHECK or p.passage_id in kept
+        ]
+    )
+
+
 def add_reviews(evidence: Evidence, reviews: list[Passage]) -> Evidence:
     """Put the first new reviews ahead of the corpus passages, keeping at most 8."""
     known = {str(p.url) for p in evidence.passages}
@@ -168,19 +185,18 @@ def _article(http: httpx.Client, url: str) -> str:
     return html_to_text(response.text)[:ARTICLE_CHARS]
 
 
-def same_claim_only(
-    search: FindReviews, judge: tuple[Reasoner, str], http: httpx.Client | None = None
-) -> FindReviews:
-    """Keep the top reviews a model judges to be about this post; a review it cannot
-    judge is dropped, since an unrelated rating fast-tracks a case (router)."""
+def covering(judge: tuple[Reasoner, str], http: httpx.Client | None = None) -> Vet:
+    """The fact-checks a model judges to be about this post, from the corpus or the
+    ClaimReview search alike; one it cannot judge is dropped, since an unrelated rating
+    can refute a genuine post."""
     client, model = judge
     http = http or httpx.Client(
         timeout=10, follow_redirects=True, headers={"User-Agent": USER_AGENT}
     )
 
-    def find(claim: Claim) -> list[Passage]:
+    def vet(claim: Claim, reviews: Sequence[Passage], enough: int | None = None) -> list[Passage]:
         kept: list[Passage] = []
-        for review in search(claim)[:GATE_CANDIDATES]:
+        for review in reviews:
             prompt = gate_prompt(claim, review, _article(http, str(review.url)))
             try:
                 answer = client.structured(model, SameClaim, GATE_SYSTEM, prompt)
@@ -189,8 +205,13 @@ def same_claim_only(
                 continue
             if answer.covers(claim):
                 kept.append(review)
-            if len(kept) == MAX_REVIEWS:
+            if len(kept) == enough:
                 break
         return kept
 
-    return find
+    return vet
+
+
+def same_claim_only(search: FindReviews, vet: Vet) -> FindReviews:
+    """The top ClaimReview results that cover this post, stopping once the slots are full."""
+    return lambda claim: vet(claim, search(claim)[:GATE_CANDIDATES], MAX_REVIEWS)
