@@ -238,4 +238,12 @@ def test_verdict_carries_the_nepali_issue() -> None:
 def test_without_a_checker_the_nepali_counts_as_unchecked() -> None:
     reasoners = [(FakeReasoner(draft()), "gpt-oss")]
     verdict = judge(claim(), MediaMatch(), EVIDENCE, reasoners, has_media=False)
-    assert verdict.nepali_issue == "not checked: no checking model configured"
+    assert (verdict.nepali_issue or "").startswith("not checked by a hosted model")
+
+
+def test_with_no_hosted_model_the_local_draft_is_a_fallback() -> None:
+    reasoner = FakeReasoner(draft())
+    verdict = judge(
+        claim(), MediaMatch(), EVIDENCE, [(reasoner, "qwen3-vl")], has_media=False, hosted=0
+    )
+    assert verdict.fallback
