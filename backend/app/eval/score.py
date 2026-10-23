@@ -62,7 +62,7 @@ def in_split(item: EvalItem, split: str) -> bool:
     return split == "all" or (number <= TUNE_LAST) == (split == "tune")
 
 
-def _refuted(label: VerdictLabel | Verdict | None) -> bool:
+def is_refuted(label: VerdictLabel | Verdict | None) -> bool:
     return label is not None and label.value in {r.value for r in REFUTED}
 
 
@@ -71,10 +71,10 @@ def _correct(item: EvalItem, decision: RouteDecision) -> bool:
     label = decision.proposed_label
     if label is None:
         return False
-    return label.value == item.verdict.value or (_refuted(item.verdict) and _refuted(label))
+    return label.value == item.verdict.value or (is_refuted(item.verdict) and is_refuted(label))
 
 
-def _ratio(hits: int, total: int) -> str:
+def ratio(hits: int, total: int) -> str:
     return f"{hits}/{total} ({hits / total:.0%})" if total else "n/a"
 
 
@@ -86,7 +86,7 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
         d.proposed_label is not None and d.proposed_label.value == r.item.verdict.value
         for r, d in pairs
     )
-    refuted = sum(_refuted(r.item.verdict) == _refuted(d.proposed_label) for r, d in pairs)
+    refuted = sum(is_refuted(r.item.verdict) == is_refuted(d.proposed_label) for r, d in pairs)
 
     media = [
         (r, bool(recycled_hits(r.outputs, t))) for r in rows if r.item.kind is not MediaKind.TEXT
@@ -110,12 +110,12 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
 
     lines = [
         f"items: {len(rows)}",
-        f"verdict exact agreement: {_ratio(exact, len(rows))}",
-        f"refuted-or-not agreement: {_ratio(refuted, len(rows))}",
-        f"recycled media precision: {_ratio(true_positives, len(flagged))}",
-        f"recycled media recall: {_ratio(true_positives, len(truly))}",
-        f"fast-track precision: {_ratio(fast_correct, len(fast))} (target 95%)",
-        f"sent to a human: {_ratio(to_human, len(rows))}",
+        f"verdict exact agreement: {ratio(exact, len(rows))}",
+        f"refuted-or-not agreement: {ratio(refuted, len(rows))}",
+        f"recycled media precision: {ratio(true_positives, len(flagged))}",
+        f"recycled media recall: {ratio(true_positives, len(truly))}",
+        f"fast-track precision: {ratio(fast_correct, len(fast))} (target 95%)",
+        f"sent to a human: {ratio(to_human, len(rows))}",
         f"latency: p50 {p50:.1f} s, p95 {p95:.1f} s",
         "",
         # safe: fast-tracked with the right label, or left to a human.
@@ -130,6 +130,11 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
             f"| {r.item.id} | {r.item.verdict.value} | {label} | {d.route.value} | {mark} |"
         )
     return lines
+
+
+# Groq's free tier allows 8000 tokens a minute per model; back-to-back cases overflow it
+# and fall back to the local model, which is not what a live case gets (2026-10-23).
+PACE_S = 60
 
 
 def with_retries(
@@ -187,6 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
             cached.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
             print(f"  ran {item.id}: {result.decision.route.value}", flush=True)
+            time.sleep(PACE_S)
         rows.append(_load(cached, item))
 
     lines = summarize(rows)
