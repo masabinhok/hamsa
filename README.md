@@ -12,7 +12,7 @@ Verification is slow because every claim repeats the same manual steps: figure o
 
 ## What Hamsa does
 
-A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post, image, or video. Hamsa then:
+A fact-checker (or a citizen, through a Telegram or Messenger bot) submits a suspicious post, image, or video. Hamsa then:
 
 1. **Extracts the claim.** Qwen3-VL reads the post and its frames and outputs structured JSON: claim, place, date claimed, numbers, and any watermarks or usernames visible in the frames.
 2. **Checks whether the media is recycled.** Perceptual hashing catches reposts even when re-encoded, mirrored, letterboxed, or captioned, and SigLIP embeddings catch heavier crops, both matched against an archive of past disaster footage from Nepal and abroad.
@@ -26,7 +26,7 @@ A fact-checker (or a citizen, through a Telegram bot) submits a suspicious post,
 ## Architecture
 
 ```
- Submission (web form / Telegram bot)
+ Submission (web form / Telegram / Messenger)
             │
             ▼
  ┌──────────────────────┐   keyframes (PyAV scene detect)
@@ -107,6 +107,7 @@ uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
 uv run uvicorn --factory app.api.main:default_app         # API on :8000
 uv run python -m app.worker                               # in a second terminal
 uv run python -m app.telegram                             # optional: the Telegram bot (TELEGRAM_BOT_TOKEN)
+uv run python -m app.messenger                            # optional: the Messenger bot (docs/install.md)
 
 cd ../frontend && npm install && npm run dev              # checker desk on :3000
 ```

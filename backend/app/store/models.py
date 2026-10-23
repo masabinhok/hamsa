@@ -34,6 +34,7 @@ class CaseStatus(StrEnum):
 class Channel(StrEnum):
     WEB = "web"
     TELEGRAM = "telegram"
+    MESSENGER = "messenger"
 
 
 class JobState(StrEnum):
@@ -143,7 +144,9 @@ class Checker(Base):
 
 
 class TelegramReport(Base):
-    """The chat a Telegram submission came from, so the bot can send the verdict back."""
+    """The chat a submission came from, so the bot can send the verdict back. Messenger
+    chats live here too (chat_id is the page-scoped user id); the case's channel says
+    which platform. shortcut: named for Telegram; rename once the schema has migrations."""
 
     __tablename__ = "telegram_reports"
 
