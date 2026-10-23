@@ -58,6 +58,8 @@ HELP = (
     "in Nepal, or send its link, photo or video. Fact-checkers look at every post, and we "
     "message you here when they publish a verdict."
 )
+# The bot's profile: the description greets a reader before they press Start.
+ABOUT = "विपद्‌बारे शंकास्पद पोस्ट पठाउनुहोस्। Send a doubtful disaster post; fact-checkers reply."
 NOTHING = (
     "पोस्टको लिंक, लेखिएको कुरा, फोटो वा भिडियो पठाउनुहोस्।\n"
     "Send the post's link, its text, or its photo or video."
@@ -426,6 +428,11 @@ def main() -> int:
         print(f"could not reach the bot: {detail}", file=sys.stderr)
         return 1
     log.info("bot @%s ready", me.get("username"))
+    try:
+        telegram.call("setMyDescription", description=HELP)
+        telegram.call("setMyShortDescription", short_description=ABOUT)
+    except (ChatError, httpx.HTTPError) as error:  # a stale profile must not stop intake
+        log.warning("profile not set: %s", type(error).__name__)
 
     offset: int | None = None
     try:
