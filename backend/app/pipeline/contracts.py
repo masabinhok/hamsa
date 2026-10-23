@@ -38,6 +38,9 @@ class Claim(Contract):
     claimed_year: int | None = None
     numbers: list[ClaimedNumber] = []
     visible_text: list[NonEmptyStr] = []
+    # What the frames show, so a fact-check about other footage of the same disaster can be
+    # told apart from one about this footage.
+    scene: str = ""
     watermarks: list[NonEmptyStr] = []
     handles: list[NonEmptyStr] = []
     checkable: bool

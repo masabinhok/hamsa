@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from app.pipeline.contracts import (
+    ArchiveHit,
     Duplicate,
     DuplicateBasis,
     Route,
@@ -454,3 +455,50 @@ def test_web_pages_never_count_as_independent_sources() -> None:
     ]
     decision = route(outputs(passages=web, verdict=verdict("false", 0.95, citations=TWO_REFUTE)))
     assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() -> None:
+    elsewhere = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("elsewhere", "confirmed")
+    )
+    decision = route(outputs(hits=[hit()], passages=NEWS, verdict=elsewhere))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["recycled media: matches 2023 Himachal Pradesh floods, Kullu"]
+    # Without a finding that the footage is wrong, the same citation is still a conflict.
+    unseen = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("not_established")
+    )
+    assert route(outputs(hits=[hit()], passages=NEWS, verdict=unseen)).route is Route.HUMAN_REVIEW
+
+
+@pytest.mark.parametrize(
+    ("media", "event", "hits", "route_to"),
+    [
+        # The BBC rescue, matched to the fact-check of its AI copy: only footage decides.
+        ("ai_generated", "not_found", [], Route.HUMAN_REVIEW),
+        ("ai_generated", "not_found", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
+        ("no_media", "contradicted", [], Route.FAST_TRACK),  # a text claim
+        ("elsewhere", "contradicted", [], Route.HUMAN_REVIEW),  # the check may refute it alone
+    ],
+)
+def test_a_fact_check_alone_does_not_fast_track_footage(
+    media: str, event: str, hits: list[ArchiveHit], route_to: Route
+) -> None:
+    checked = verdict("false", 0.9, citations=[cite("p1")], **findings(media, event))
+    decision = route(outputs(passages=FACT_CHECK, hits=hits, verdict=checked))
+    assert decision.route is route_to
+    if route_to is Route.HUMAN_REVIEW:
+        assert decision.reasons == [
+            "prior fact-check agrees (Nepal Factcheck), "
+            "but no frame match shows it checked this footage"
+        ]
+
+
+def test_two_sources_do_not_fast_track_unseen_footage() -> None:
+    two = verdict("false", 0.9, citations=TWO_REFUTE, **findings("elsewhere"))
+    decision = route(outputs(passages=NEWS, verdict=two))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == [
+        "2 independent sources (Onlinekhabar, Nepalnews) agree, "
+        "but no frame match ties them to this footage"
+    ]

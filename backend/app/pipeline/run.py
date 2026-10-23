@@ -14,7 +14,7 @@ import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException
 
 from app.ingest.frames import Frame, frames_of
-from app.pipeline.claim_reviews import FindReviews, add_reviews
+from app.pipeline.claim_reviews import FindReviews, Vet, add_reviews, vetted
 from app.pipeline.contracts import (
     Claim,
     Duplicate,
@@ -46,6 +46,8 @@ class Pipeline:
     nepali_checker: tuple[Reasoner, str] | None = None
     # Fact-checks published anywhere (ADR 0012); None without an API key.
     find_reviews: FindReviews | None = None
+    # Drops corpus fact-checks about other posts; None without a judging model.
+    vet_fact_checks: Vet | None = None
     # Pages found by web search; None without SearXNG.
     find_web: FindWeb | None = None
 
@@ -134,7 +136,11 @@ def run(
         Stage.RETRIEVE,
         lambda: add_web(
             add_reviews(
-                retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
+                vetted(
+                    claim,
+                    retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
+                    pipeline.vet_fact_checks,
+                ),
                 pipeline.find_reviews(claim) if pipeline.find_reviews else [],
             ),
             pipeline.find_web(claim, since, until) if pipeline.find_web else [],

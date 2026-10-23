@@ -138,18 +138,32 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         and label is not VerdictLabel.UNVERIFIABLE
         and verdict.confidence >= thresholds.fast_track_confidence
     )
+    # Text about some video is not proof about this one: on live posts (2026-10-22) checks
+    # of an AI copy and of other videos landed on genuine BBC, Sky and CNN footage.
+    framed = any(is_strong_match(h) for h in media.hits)
+    unseen = _footage_decides(verdict) and not framed
+    unconfirmed: list[str] = []
     if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
-        return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        # Not unseen alone: the matched check is often the only thing "contradicting" the
+        # words too (live L29: BOOM's check of an AI copy of the real police rescue).
+        if framed or verdict.media_finding in (None, MediaFinding.NO_MEDIA):
+            return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        unconfirmed = [
+            f"prior fact-check agrees ({', '.join(checkers)}), "
+            "but no frame match shows it checked this footage"
+        ]
     if confident and len(agreeing) >= thresholds.min_independent_sources:
-        return decide(
-            Route.FAST_TRACK,
-            [f"strong evidence: {len(agreeing)} independent sources ({', '.join(agreeing)})"],
-        )
+        reason = f"{len(agreeing)} independent sources ({', '.join(agreeing)})"
+        if not unseen:
+            return decide(Route.FAST_TRACK, [f"strong evidence: {reason}"])
+        unconfirmed = unconfirmed or [
+            f"{reason} agree, but no frame match ties them to this footage"
+        ]
 
     if not evidence.passages and not media.hits:
         return decide(Route.INVESTIGATE, ["new claim: no evidence and no archive match"])
 
-    reasons = conflicts or [_why_not_confident(verdict, agreeing, thresholds)]
+    reasons = conflicts or unconfirmed or [_why_not_confident(verdict, agreeing, thresholds)]
     return decide(Route.HUMAN_REVIEW, reasons)
 
 
@@ -208,6 +222,22 @@ def _is_older_footage(
     if reference is None:
         return False
     return (reference - hit.original_date).days > t.same_event_days
+
+
+def _footage_decides(verdict: Verdict) -> bool:
+    """The label rests on what the footage is, not on the post's words or figures.
+
+    False for text posts, and for verdicts drafted before findings were asked for.
+    """
+    if verdict.media_finding in (None, MediaFinding.NO_MEDIA):
+        return False
+    if verdict.label is VerdictLabel.TRUE:
+        return True
+    words_refuted = (
+        verdict.event_finding is EventFinding.CONTRADICTED
+        or verdict.number_finding is NumberFinding.CONTRADICTED
+    )
+    return verdict.media_finding in FOOTAGE_REFUTED and not words_refuted
 
 
 def _found_refuting(verdict: Verdict) -> bool:
@@ -299,9 +329,14 @@ def _conflicts(
         conflicts.append(f"Nepali rationale needs a checker: {verdict.nepali_issue}")
 
     expected = _expected_stance(verdict.label)
+    # Footage from elsewhere makes a post false even when the event is real, so a report
+    # confirming the event is no conflict (it sent 10 correct recycled verdicts to a human).
+    event_only = verdict.label in REFUTING_LABELS and verdict.media_finding in FOOTAGE_REFUTED
     if expected is not None:
         for citation in verdict.citations:
             passage = evidence.by_id(citation.passage_id)
+            if event_only and citation.stance is Stance.SUPPORTS:
+                continue
             if passage and citation.stance is not expected:
                 conflicts.append(f"cited {passage.source} {citation.stance} the claim")
     return conflicts

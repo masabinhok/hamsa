@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.eval.dataset import load_items
 from app.eval.score import EVAL_DIR, RUNS_DIR
 from app.llm.groq import GroqClient
-from app.pipeline.claim_reviews import MAX_REVIEWS, ClaimReviewSearch, same_claim_only
+from app.pipeline.claim_reviews import MAX_REVIEWS, ClaimReviewSearch, covering, same_claim_only
 from app.pipeline.contracts import Claim
 
 
@@ -31,7 +31,7 @@ def main() -> int:
     gate = GroqClient(settings.groq_api_key.get_secret_value(), reasoning_effort="low")
     search = same_claim_only(
         ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()),
-        (gate, settings.checking_model),
+        covering((gate, settings.checking_model)),
     )
 
     exact = same_publisher = anywhere = total = 0
