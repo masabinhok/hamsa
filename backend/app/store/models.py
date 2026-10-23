@@ -156,6 +156,17 @@ class TelegramReport(Base):
     asked_for_media: Mapped[bool] = mapped_column(default=False)
 
 
+class PostId(Base):
+    """The platform's own id for a linked post, from yt-dlp: it survives share links,
+    redirects and tracking parameters, so a forwarded post is known as a repeat."""
+
+    __tablename__ = "post_ids"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), unique=True)
+    post_id: Mapped[str] = mapped_column(index=True)
+
+
 class Lesson(Base):
     """A published case the archive has still to learn from (worker, ADR 0011)."""
 

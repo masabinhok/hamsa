@@ -1,11 +1,13 @@
 """Case store operations. Every status change writes a CaseEvent (architecture 4)."""
 
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel
 from sqlalchemy import Engine, bindparam, create_engine, event, select, text
@@ -14,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.pipeline.contracts import (
     Claim,
     Duplicate,
+    DuplicateBasis,
     Evidence,
     MediaMatch,
     Route,
@@ -34,6 +37,7 @@ from app.store.models import (
     JobState,
     Lesson,
     Media,
+    PostId,
     UTCDateTime,
     utcnow,
 )
@@ -240,26 +244,80 @@ def published(session: Session, limit: int = 50) -> list[Case]:
 OPEN = (CaseStatus.RECEIVED, CaseStatus.PROCESSING, CaseStatus.ROUTED)
 
 
-def media_duplicate(session: Session, case: Case) -> str | None:
-    """The oldest earlier open case holding one of this case's files, byte for byte.
+DECIDED = (CaseStatus.PUBLISHED, CaseStatus.REJECTED)
+# Query parameters that say who shared a post or how, never which post it is.
+TRACKING = frozenset(
+    {"fbclid", "mibextid", "rdid", "ref", "si", "feature", "t", "s", "igsh", "igshid"}
+    | {"is_from_webapp", "sender_device", "_r", "_t", "share_url", "img_index"}
+)
 
-    Only earlier cases: otherwise the first report would merge into its own later copy.
-    """
-    digests = [m.sha256 for m in case.media]
-    if not digests:
-        return None
-    query = (
-        select(Case.id)
-        .join(Media)
-        .where(
-            Media.sha256.in_(digests),
-            Case.created_at < case.created_at,
-            Case.status.in_(OPEN),
-        )
-        .order_by(Case.created_at)
-        .limit(1)
+
+def normalize_url(url: str) -> str:
+    """One spelling per post link: the same post forwarded from the app, the mobile site or
+    a share sheet differs only in host prefix and tracking parameters."""
+    parts = urlsplit(url.strip())
+    host = parts.hostname or ""
+    host = re.sub(r"^(m|mobile|web|vm)\.", "www.", host)
+    host = {"twitter.com": "x.com", "www.twitter.com": "x.com", "www.x.com": "x.com"}.get(
+        host, host
     )
-    return session.scalar(query)
+    path = parts.path.rstrip("/")
+    if host == "youtu.be":
+        host, path, query = "www.youtube.com", "/watch", [("v", path.lstrip("/"))]
+    else:
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parts.query)
+            if key.lower() not in TRACKING and not key.lower().startswith(("utm_", "__"))
+        ]
+    return urlunsplit(("https", host, path, urlencode(sorted(query)), ""))
+
+
+def same_post(session: Session, case: Case) -> Duplicate | None:
+    """The earliest earlier report of this post, open or decided, for the case to merge into.
+
+    The same link or platform post id is the same post. The same file is too while that
+    report is open; once it is decided, only with the same words or none: a new caption can
+    make genuine footage a false claim, so that copy is checked afresh (the archive knows the
+    footage). Only earlier cases: otherwise a report would merge into its own later copy.
+    """
+    earlier = select(Case).where(Case.created_at < case.created_at).order_by(Case.created_at)
+    found: list[tuple[Case, DuplicateBasis]] = []
+    if case.source_url:
+        link = normalize_url(case.source_url)
+        # shortcut: normalises every earlier link per case; store it once there are thousands.
+        linked = session.scalars(earlier.where(Case.source_url.is_not(None)))
+        found += [
+            (c, DuplicateBasis.LINK) for c in linked if normalize_url(c.source_url or "") == link
+        ]
+    if post_id := session.scalar(select(PostId.post_id).where(PostId.case_id == case.id)):
+        same_id = session.scalars(earlier.join(PostId).where(PostId.post_id == post_id))
+        found += [(c, DuplicateBasis.LINK) for c in same_id]
+    if digests := [m.sha256 for m in case.media]:
+        same_file = session.scalars(earlier.join(Media).where(Media.sha256.in_(digests)))
+        found += [(c, DuplicateBasis.MEDIA) for c in same_file]
+
+    for earliest, basis in sorted(found, key=lambda pair: pair[0].created_at):
+        target = answered_by(session, earliest)
+        if target.status in OPEN or (
+            target.status in DECIDED
+            and (basis is DuplicateBasis.LINK or _same_words(case.text, target.text))
+        ):
+            return Duplicate(case_id=target.id, basis=basis)
+    return None
+
+
+def answered_by(session: Session, case: Case) -> Case:
+    """The case whose verdict answers this one: itself, or the report it was merged into."""
+    for _ in range(5):  # merges point at earlier cases, so this is a short chain
+        if case.merged_into is None:
+            break
+        case = session.get_one(Case, case.merged_into)
+    return case
+
+
+def _same_words(new: str | None, old: str | None) -> bool:
+    return not (new and new.strip()) or " ".join(new.split()) == " ".join((old or "").split())
 
 
 def open_claims(session: Session) -> list[OpenClaim]:

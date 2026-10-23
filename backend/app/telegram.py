@@ -27,7 +27,14 @@ from app.api.main import (
     sniff_suffix,
 )
 from app.config import get_settings
-from app.store.cases import Database, StoredMedia, create_case, new_case_id, save_media
+from app.store.cases import (
+    Database,
+    StoredMedia,
+    answered_by,
+    create_case,
+    new_case_id,
+    save_media,
+)
 from app.store.models import Case, CaseEvent, CaseStatus, Channel, TelegramReport
 
 API = "https://api.telegram.org"
@@ -297,15 +304,6 @@ def status_link(origin: str, case_id: str) -> str:
     return f"{origin.rstrip('/')}/check/{case_id}"
 
 
-def _checked_as(session: Session, case: Case) -> Case:
-    """The case whose verdict answers this one: itself, or the report it was merged into."""
-    for _ in range(5):  # merges point at earlier cases, so this is a short chain
-        if case.merged_into is None:
-            break
-        case = session.get_one(Case, case.merged_into)
-    return case
-
-
 def _latest_event(session: Session, case_id: str, status: CaseStatus) -> CaseEvent | None:
     query = (
         select(CaseEvent)
@@ -318,7 +316,7 @@ def _latest_event(session: Session, case_id: str, status: CaseStatus) -> CaseEve
 
 def news_for(session: Session, case: Case, origin: str) -> tuple[int, str] | None:
     """The newest thing the submitter should hear, with the event id it answers."""
-    checked = _checked_as(session, case)
+    checked = answered_by(session, case)
     if checked.status is CaseStatus.PUBLISHED:
         event = _latest_event(session, checked.id, CaseStatus.PUBLISHED)
         verdict = published_verdict(checked)

@@ -56,6 +56,7 @@ from app.store.cases import (
     DecisionError,
     StoredMedia,
     add_sent_media,
+    answered_by,
     create_case,
     desk_queue,
     new_case_id,
@@ -220,12 +221,12 @@ async def send_media(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"send 1 to {MAX_FILES} files")
     add_sent_media(session, case, await save_uploads(request, case_id, files))
     session.flush()
-    return public_view(case)
+    return public_view(session, case)
 
 
 @public.get("/cases/{case_id}")
 def public_case(session: DbSession, case_id: str) -> PublicCase:
-    return public_view(get_case(session, case_id))
+    return public_view(session, get_case(session, case_id))
 
 
 @public.get("/cases/{case_id}/media/{name}")
@@ -240,7 +241,7 @@ def public_media(request: Request, session: DbSession, case_id: str, name: str) 
 
 @public.get("/verdicts")
 def verdicts(session: DbSession) -> list[PublicCase]:
-    return [public_view(c) for c in published(session)]
+    return [public_view(session, c) for c in published(session)]
 
 
 @desk.get("/me")
@@ -386,8 +387,13 @@ def needs_media(case: Case) -> bool:
     return tried and bool(case.source_url) and not case.media
 
 
-def public_view(case: Case) -> PublicCase:
-    verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
+def public_view(session: Session, case: Case) -> PublicCase:
+    # A repeat merged into a decided report shows that verdict on its own page; the files
+    # belong to the earlier report, which the page links to.
+    answer = answered_by(session, case)
+    verdict = published_verdict(answer) if answer.status is CaseStatus.PUBLISHED else None
+    if verdict and answer is not case:
+        verdict = verdict.model_copy(update={"media": []})
     return PublicCase(
         id=case.id,
         status=case.status,

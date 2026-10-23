@@ -4,6 +4,7 @@ Rules run in a fixed order and the first match wins. Every decision carries the
 reasons that fired it, so a checker can see why a case landed where it did.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -43,6 +44,8 @@ AI_TOOL_MARKS = (
 
 REFUTING_LABELS = (VerdictLabel.FALSE, VerdictLabel.MISLEADING)
 FOOTAGE_REFUTED = (MediaFinding.ELSEWHERE, MediaFinding.AI_GENERATED)
+# The context teach() (app/learn.py) gives footage from a case a checker published.
+PUBLISHED_ON_HAMSA = re.compile(r"(Verified genuine|Debunked) on Hamsa(?: as (false|misleading))?:")
 
 
 @dataclass(frozen=True)
@@ -120,6 +123,16 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
     def decide(route: Route, reasons: list[str]) -> RouteDecision:
         return RouteDecision(route=route, reasons=reasons, proposed_label=label)
 
+    # A checker already published a verdict on this footage, and this one agrees; the date
+    # rules above make a misdated repost of genuine footage a conflict, never this.
+    if not conflicts and not verdict.fallback:
+        for hit in media.hits:
+            if is_strong_match(hit, thresholds) and _published_label(hit) is label:
+                case_id = hit.archive_id.removeprefix("case-").rsplit("-", 1)[0]
+                return decide(
+                    Route.FAST_TRACK, [f"same footage published as {label} on Hamsa ({case_id})"]
+                )
+
     if not conflicts and label in REFUTING_LABELS:
         if strong_prior:
             hit = strong_prior[0]
@@ -187,6 +200,13 @@ def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> 
         for hit in outputs.media_match.hits
         if is_strong_match(hit, t) and _is_older_footage(hit, reference, since, t)
     ]
+
+
+def _published_label(hit: ArchiveHit) -> VerdictLabel | None:
+    found = PUBLISHED_ON_HAMSA.match(hit.original_context)
+    if not hit.archive_id.startswith("case-") or found is None:
+        return None
+    return VerdictLabel.TRUE if found[1] == "Verified genuine" else VerdictLabel(found[2])
 
 
 def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool:

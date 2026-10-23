@@ -179,7 +179,14 @@ function Status({ id }: { id: string }) {
       {current?.merged_into && (
         <p className={styles.notice}>
           <Link href={`/check/${encodeURIComponent(current.merged_into)}`}>
-            <Both ne="पहिलेको रिपोर्ट हेर्नुहोस्" en={`Follow report ${current.merged_into} instead`} />
+            {verdict ? (
+              <Both
+                ne="यही पोस्ट पहिले जाँचिएको थियो। त्यो रिपोर्ट हेर्नुहोस्"
+                en={`This post was checked before: see report ${current.merged_into}`}
+              />
+            ) : (
+              <Both ne="पहिलेको रिपोर्ट हेर्नुहोस्" en={`Follow report ${current.merged_into} instead`} />
+            )}
           </Link>
         </p>
       )}
@@ -208,7 +215,7 @@ function Status({ id }: { id: string }) {
                 ),
               )}
             </div>
-          ) : current.media_count > 0 ? (
+          ) : current.media_count > 0 && !current.merged_into ? (
             <p className={styles.quiet}>
               <Both
                 ne={`${current.media_count} वटा फाइल जोडिएको। तथ्य जाँचकर्ताले हेरेपछि यहाँ देखिन्छ।`}
