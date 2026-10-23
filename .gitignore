@@ -17,3 +17,4 @@ data/cases/
 data/eval/drafts*
 data/eval/runs/
 graphify-out/
+*.mp4
