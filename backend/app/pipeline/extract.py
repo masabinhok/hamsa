@@ -45,8 +45,8 @@ this footage from other footage of the same disaster: the setting, what moves, a
 distinctive objects (e.g. "a muddy river sweeps a three-storey house past a suspension \
 bridge" or "a news anchor in a studio, then aerial shots of a flooded valley"). Empty \
 with no frames.
-- watermarks: logos, channel marks, and generator marks visible in the frames, such as \
-a TV channel logo or "Veo", "Sora", or "Gemini". Empty if none.
+- watermarks: logos and marks you can read in the frames, such as a TV channel's logo \
+or the name of the app or tool that made the video, copied as shown. Empty if none.
 - handles: usernames or page names visible in the text or frames, such as @name.
 - checkable: false only if the post makes no factual assertion (prayers, opinions, \
 condolences) and shows no disaster footage. Disaster footage shared with only an \
