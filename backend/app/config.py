@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:3000"
     # From @BotFather; `python -m app.telegram` refuses to start without it.
     telegram_bot_token: SecretStr | None = None
+    # From the Meta app and its Facebook Page; `python -m app.messenger` needs all three.
+    messenger_page_token: SecretStr | None = None
+    messenger_app_secret: SecretStr | None = None
+    messenger_verify_token: SecretStr | None = None
 
 
 @lru_cache
