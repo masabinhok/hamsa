@@ -85,6 +85,7 @@ class MediaMatch(Contract):
 
 
 class DuplicateBasis(StrEnum):
+    LINK = "link"
     MEDIA = "media"
     CLAIM = "claim"
 

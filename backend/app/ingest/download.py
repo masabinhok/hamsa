@@ -40,6 +40,8 @@ class Downloaded:
     caption: str | None
     title: str | None = None
     uploaded: date | None = None
+    # The platform's own id ("Youtube:EmM79Xzvbg0"), the same however the link was shared.
+    post_id: str | None = None
 
 
 def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
@@ -76,6 +78,9 @@ def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:
         caption=caption,
         title=meta.get("title"),
         uploaded=datetime.strptime(day, "%Y%m%d").date() if day else None,
+        post_id=f"{meta['extractor_key']}:{meta['id']}"
+        if meta.get("extractor_key") and meta.get("id")
+        else None,
     )
 
 

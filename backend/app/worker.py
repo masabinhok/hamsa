@@ -20,8 +20,6 @@ from app.config import get_settings
 from app.ingest.download import Downloaded, download
 from app.learn import Verdicted, teach
 from app.pipeline.contracts import (
-    Duplicate,
-    DuplicateBasis,
     Route,
     RouteDecision,
     Stage,
@@ -35,12 +33,12 @@ from app.store.cases import (
     StoredMedia,
     claim_job,
     complete_job,
-    media_duplicate,
     open_claims,
     requeue_job,
+    same_post,
     save_media,
 )
-from app.store.models import Case, Job, Lesson, Media, utcnow
+from app.store.models import Case, Job, Lesson, Media, PostId, utcnow
 
 MAX_ATTEMPTS = 3
 MAX_CAPTION_CHARS = 5000  # the same limit as submitted text (MAX_TEXT_CHARS in the API)
@@ -85,6 +83,8 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         case.media.extend(
             Media(filename=m.filename, sha256=m.sha256, size_bytes=m.size_bytes) for m in stored
         )
+        if post.post_id:
+            session.add(PostId(case_id=case_id, post_id=post.post_id))
         if post.caption:
             caption = post.caption[:MAX_CAPTION_CHARS]
             # The caption is what the post claims; the sender's words only frame it.
@@ -102,19 +102,23 @@ def process_next(
     if claimed is None:
         return None
     job_id, case_id = claimed
+    # A forwarded link is known before it is downloaded again.
+    with db.session() as session:
+        original = same_post(session, session.get_one(Case, case_id))
     # shortcut: the date lives only in this run; a retried job loses it. Store it on the
     # case once the schema gets migrations.
-    posted = attach_link_media(db, case_id, media_root, fetch) if fetch else None
+    posted = attach_link_media(db, case_id, media_root, fetch) if fetch and not original else None
 
     with db.session() as session:
         case = session.get_one(Case, case_id)
         text = case.text
         paths = [media_root / case_id / m.filename for m in case.media]
-        original = media_duplicate(session, case)
+        original = original or same_post(session, case)
 
     if original is not None:
-        # The same file is already on the desk: merge without spending any model time.
-        same = StageOutputs(duplicate=Duplicate(case_id=original, basis=DuplicateBasis.MEDIA))
+        # Already reported: merge without spending any model time. A decided report answers
+        # the sender at once with the checker's verdict.
+        same = StageOutputs(duplicate=original)
         result = Result(outputs=same, decision=route(same))
     elif not (text and text.strip()) and not paths:
         # A model asked about an empty post invents one: "a flood sweeping through a

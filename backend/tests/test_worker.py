@@ -12,7 +12,14 @@ from app.ingest.download import Downloaded
 from app.pipeline.contracts import Route, Stage, StageFailure, VerdictLabel
 from app.pipeline.run import Result
 from app.router.route import StageOutputs
-from app.store.cases import Database, StoredMedia, create_case, open_claims
+from app.store.cases import (
+    Database,
+    StoredMedia,
+    create_case,
+    normalize_url,
+    open_claims,
+    publish,
+)
 from app.store.models import Case, CaseStatus, Channel, Job, JobState
 from app.worker import MAX_ATTEMPTS, process_next
 from tests.factories import claim, outputs
@@ -320,3 +327,99 @@ def test_published_cases_are_learned_once_and_failures_recorded(db: Database) ->
         c1, c2 = session.scalars(select(Lesson).order_by(Lesson.id)).all()
         assert c1.done_at is not None
         assert c2.error == "ValueError: dead link"
+
+
+@pytest.mark.parametrize(
+    ("sent", "first"),
+    [
+        (
+            "https://m.facebook.com/story.php?story_fbid=9&id=4&mibextid=Nif5oz&fbclid=x",
+            "https://www.facebook.com/story.php?id=4&story_fbid=9",
+        ),
+        ("https://youtu.be/EmM79Xzvbg0?si=abc", "https://www.youtube.com/watch?v=EmM79Xzvbg0"),
+        ("https://twitter.com/user/status/1/?s=20&t=k", "https://x.com/user/status/1"),
+        (
+            "https://www.tiktok.com/@a/video/7?is_from_webapp=1&_r=1",
+            "https://www.tiktok.com/@a/video/7",
+        ),
+    ],
+)
+def test_one_post_shared_different_ways_is_one_link(sent: str, first: str) -> None:
+    assert normalize_url(sent) == normalize_url(first)
+
+
+def test_other_posts_stay_apart() -> None:
+    watch = "https://www.youtube.com/watch?v="
+    assert normalize_url(watch + "a") != normalize_url(watch + "b")
+    assert normalize_url("https://x.com/u/status/1") != normalize_url("https://x.com/u/status/2")
+
+
+def publish_first(db: Database) -> None:
+    with db.session.begin() as session:
+        case = session.get_one(Case, "c1")
+        publish(session, case, "Asha", VerdictLabel.FALSE, "Old footage.", "पुरानो भिडियो।", None)
+
+
+def no_fetch(url: str, folder: Path) -> Downloaded:
+    raise AssertionError("a repeat is not downloaded again")
+
+
+def test_a_forwarded_link_gets_the_published_verdict_without_any_model(
+    db: Database, tmp_path: Path
+) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, None, "https://www.facebook.com/reel/1", [])
+    process_next(db, lambda t, m, p: routed_result(), tmp_path)
+    publish_first(db)
+    with db.session.begin() as session:
+        sent = "https://m.facebook.com/reel/1/?mibextid=rS40aB7S9Ucbxw6v"
+        create_case(session, "c2", Channel.TELEGRAM, None, sent, [])
+
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        raise AssertionError("a repeat spends no model time")
+
+    assert process_next(db, runner, tmp_path, no_fetch) == "c2"
+    with db.session() as session:
+        repeat = session.get_one(Case, "c2")
+        assert (repeat.status, repeat.merged_into) == (CaseStatus.MERGED, "c1")
+
+
+def test_a_share_link_is_known_by_the_platforms_post_id(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, None, "https://www.tiktok.com/@a/video/7", [])
+        create_case(session, "c2", Channel.WEB, None, "https://vt.tiktok.com/ZSabc/", [])
+
+    def fetch(url: str, folder: Path) -> Downloaded:
+        return Downloaded([], "बाढी", post_id="TikTok:7")
+
+    process_next(db, lambda t, m, p: routed_result(), tmp_path, fetch)
+    assert process_next(db, lambda t, m, p: routed_result(), tmp_path, fetch) == "c2"
+    with db.session() as session:
+        assert session.get_one(Case, "c2").merged_into == "c1"
+
+
+def test_a_decided_file_with_new_words_is_checked_again(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(
+            session, "c1", Channel.WEB, "भेरीमा बाढी", None, [StoredMedia("a.mp4", "f" * 64, 10)]
+        )
+    process_next(db, lambda t, m, p: routed_result(), tmp_path)
+    publish_first(db)
+    with db.session.begin() as session:
+        recaptioned = "आजको बाढी, २०८३"  # genuine footage, new date: a different claim
+        create_case(
+            session, "c2", Channel.WEB, recaptioned, None, [StoredMedia("a.mp4", "f" * 64, 10)]
+        )
+        create_case(session, "c3", Channel.WEB, None, None, [StoredMedia("a.mp4", "f" * 64, 10)])
+    runs: list[str | None] = []
+
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        runs.append(text)
+        return routed_result()
+
+    process_next(db, runner, tmp_path)
+    process_next(db, runner, tmp_path)
+    assert runs == ["आजको बाढी, २०८३"]
+    with db.session() as session:
+        assert session.get_one(Case, "c2").status is CaseStatus.ROUTED
+        assert session.get_one(Case, "c3").merged_into == "c1"  # the file alone: same post
