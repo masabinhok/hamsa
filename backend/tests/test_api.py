@@ -240,6 +240,39 @@ def test_public_case_asks_for_the_file_when_the_link_failed(
     assert client.get("/cases/c9").json()["needs_media"] is True
 
 
+def test_the_sender_adds_the_file_to_the_same_report(
+    client: TestClient, db: Database, tmp_path: Path
+) -> None:
+    add_routed_case(db, "c9")
+    with db.session.begin() as session:
+        session.get_one(Case, "c9").source_url = "https://www.facebook.com/reel/1"
+    sent = client.post("/cases/c9/media", files=[("files", ("a.jpg", jpeg(), "image/jpeg"))])
+    assert sent.status_code == 200
+    report = sent.json()
+    assert (report["status"], report["media_count"], report["needs_media"]) == (
+        "received",
+        1,
+        False,
+    )
+    assert len(list((tmp_path / "media" / "c9").iterdir())) == 1
+    with db.session.begin() as session:
+        assert claim_job(session) is not None  # queued again, on the same case
+    # Once it has its file it is no longer waiting for one; nor is a report without a link.
+    again = client.post("/cases/c9/media", files=[("files", ("a.jpg", jpeg(), "image/jpeg"))])
+    assert again.status_code == 409
+    add_routed_case(db, "c10")
+    assert client.post("/cases/c10/media", files=[("files", ("a.jpg", jpeg()))]).status_code == 409
+
+
+def test_only_photos_and_videos_are_added(client: TestClient, db: Database) -> None:
+    add_routed_case(db, "c9")
+    with db.session.begin() as session:
+        session.get_one(Case, "c9").source_url = "https://www.facebook.com/reel/1"
+    bad = client.post("/cases/c9/media", files=[("files", ("a.jpg", b"%PDF-1.7", "image/jpeg"))])
+    assert bad.status_code == 415
+    assert client.get("/cases/c9").json()["needs_media"] is True
+
+
 def test_publishing_records_the_original_for_the_archive(client: TestClient, db: Database) -> None:
     from sqlalchemy import select
 
