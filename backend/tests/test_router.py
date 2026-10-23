@@ -502,3 +502,41 @@ def test_two_sources_do_not_fast_track_unseen_footage() -> None:
         "2 independent sources (Onlinekhabar, Nepalnews) agree, "
         "but no frame match ties them to this footage"
     ]
+
+
+GENUINE_ON_HAMSA = hit(
+    archive_id="case-38ec51f3aff9-0",
+    archive_label="verified_genuine",
+    original_context="Verified genuine on Hamsa: Business Standard report of the Rasuwa flood.",
+    original_date=None,
+)
+
+
+def test_footage_a_checker_published_fast_tracks_an_agreeing_verdict() -> None:
+    true = verdict("true", 0.8, citations=[cite("p1", "supports")], **findings("shows_claim"))
+    decision = route(outputs(hits=[GENUINE_ON_HAMSA], verdict=true))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["same footage published as true on Hamsa (38ec51f3aff9)"]
+
+
+def test_footage_a_checker_published_does_not_carry_a_different_label() -> None:
+    # The same genuine clip, recaptioned as today's flood: the earlier "true" is not reused.
+    misdated = verdict(
+        "false", 0.9, citations=[cite("p1")], **findings("elsewhere", "contradicted")
+    )
+    decision = route(outputs(hits=[GENUINE_ON_HAMSA], verdict=misdated))
+    assert not any(r.startswith("same footage published") for r in decision.reasons)
+
+
+def test_debunked_on_hamsa_needs_the_same_label() -> None:
+    debunked = hit(
+        archive_id="case-77f11fb6f371-0",
+        original_context="Debunked on Hamsa as false: The video is AI-generated.",
+    )
+    false = verdict("false", 0.9, citations=[cite("p1")], **findings("ai_generated"))
+    assert route(outputs(hits=[debunked], verdict=false)).reasons == [
+        "same footage published as false on Hamsa (77f11fb6f371)"
+    ]
+    fallback = false.model_copy(update={"fallback": True})
+    reasons = route(outputs(hits=[debunked], verdict=fallback)).reasons
+    assert not any(r.startswith("same footage published") for r in reasons)

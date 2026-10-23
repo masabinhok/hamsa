@@ -138,9 +138,14 @@ A hit on `prior` footage is evidence that the post is recycled. A hit on `verifi
 
 ### 3.4 Duplicate check
 
-A case is a duplicate of an earlier open case (received, processing, or waiting on the desk) if either:
-- **exact media:** any file's `sha256` matches. The worker checks this before running the pipeline (`media_duplicate` in `backend/app/store/cases.py`), so an identical re-upload costs no model time. Only earlier cases count, so a first report never merges into its own later copy.
-- **same claim:** after extraction, the bge-m3 cosine between `claim_en` values is 0.92 or more *and* a place overlaps, where one place name containing the other counts ("बुटवल" and "बुटवल उपमहानगरपालिका"). `claim_duplicate` in `backend/app/pipeline/duplicate.py`. *Starting value.*
+**The same post** (`same_post` in `backend/app/store/cases.py`, checked by the worker before any model runs, so a repeat costs no model time) is a repeat of an earlier report, open *or decided*, if any of these match:
+- **link:** the link as sent, normalised (`normalize_url`: mobile hosts, `twitter.com` as `x.com`, `youtu.be`, tracking parameters such as `mibextid`, `si`, `fbclid`, `utm_*`). Checked before the download, so a forwarded link is not fetched again.
+- **post id:** the platform's own id from yt-dlp (`Youtube:EmM79Xzvbg0`, kept in the `post_ids` table), which survives share links and redirects.
+- **exact media:** any file's `sha256`. Against a decided report only when the new post has the same words or none: a new caption can make genuine footage a false claim, so that copy is checked afresh, and the archive tells the verdict what the checker decided about the footage.
+
+A repeat of a decided report answers the sender at once: Telegram sends that verdict, and the web report shows it. Only earlier cases count, so a first report never merges into its own later copy.
+
+A later case is also a duplicate of an earlier open case if it makes **the same claim**: after extraction, the bge-m3 cosine between `claim_en` values is 0.92 or more *and* a place overlaps, where one place name containing the other counts ("बुटवल" and "बुटवल उपमहानगरपालिका"). `claim_duplicate` in `backend/app/pipeline/duplicate.py`. *Starting value.*
 
 A duplicate is merged under the existing case, which strengthens its virality signal. It is not processed further. Re-encoded copies (different bytes) are not caught here; they still reach media match, where the archive finds them if the footage is known. Checked end to end on 2026-10-12: an identical video merged by media, the same caption without the video merged by claim.
 
@@ -217,7 +222,7 @@ The models propose; rules decide ([ADR 0004](adr/0004-deterministic-router.md)).
 flowchart TD
     start([Stage outputs]) --> f{Any stage failed?}
     f -->|yes| hr1[human_review<br/>reason: stage failure]
-    f -->|no| d{Duplicate of open case?}
+    f -->|no| d{Repeat of a reported post?}
     d -->|yes| merge[merge]
     d -->|no| c{Claim checkable?}
     c -->|no| close[dismiss<br/>reason: not a factual claim]
@@ -254,6 +259,7 @@ flowchart TD
 
 Notes:
 - **Thresholds are starting values** (`Thresholds` in the router). Model confidence is not calibrated, so they are tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.
+- **Footage a checker published:** a strong frame match to a case's archived keyframes (`case-<id>-<n>`, written by `teach()` in `backend/app/learn.py`), a verdict with the label the checker published, no conflict, and no fallback model fast-tracks with "same footage published as <label> on Hamsa (<case>)". A misdated repost of genuine footage is a conflict under the date rules, so it never borrows the earlier "true".
 - **Recycled-media fast-tracks ignore model confidence,** because the archive match is itself the proof, and the checker sees the original side by side.
 - **`unverifiable` is never fast-tracked.**
 - **`fast_track` does not mean published.** It means the case goes to the top of the desk with a pre-filled verdict for one-click approval.
