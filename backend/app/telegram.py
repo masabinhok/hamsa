@@ -11,7 +11,7 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 from pydantic import HttpUrl, TypeAdapter, ValidationError
@@ -94,8 +94,9 @@ ASK_FOR_MEDIA = (
 )
 
 
-class TelegramError(Exception):
-    """A Bot API refusal. Never carries the request URL, which holds the bot token."""
+class ChatError(Exception):
+    """A chat platform's refusal (Telegram, Messenger). Never carries the request URL,
+    which may hold the token."""
 
     def __init__(self, status: int, description: str) -> None:
         super().__init__(f"{status}: {description}")
@@ -117,14 +118,14 @@ class Telegram:
         except ValueError:
             body = {}
         if not body.get("ok"):
-            raise TelegramError(response.status_code, str(body.get("description", "no body")))
+            raise ChatError(response.status_code, str(body.get("description", "no body")))
         return body["result"]
 
     def download(self, file_id: str) -> bytes:
         found: dict[str, Any] = self.call("getFile", file_id=file_id)
         response = self.http.get(f"{self._files}/{found['file_path']}")
         if response.status_code != httpx.codes.OK.value:
-            raise TelegramError(response.status_code, "file download failed")
+            raise ChatError(response.status_code, "file download failed")
         return response.content
 
     def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None:
@@ -139,6 +140,14 @@ class Telegram:
                 "allow_sending_without_reply": True,
             }
         self.call("sendMessage", **params)
+
+
+class Chat(Protocol):
+    """What intake and verdict news need from a chat platform (Telegram, Messenger)."""
+
+    def download(self, file_id: str) -> bytes: ...
+
+    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None: ...
 
 
 @dataclass
@@ -235,20 +244,21 @@ def submissions(updates: Iterable[dict[str, Any]]) -> list[Submission]:
     return found
 
 
-def _reply(telegram: Telegram, post: Submission, text: str) -> None:
+def _reply(telegram: Chat, post: Submission, text: str) -> None:
     try:
         telegram.send(post.chat_id, text, reply_to=post.message_id)
-    except (TelegramError, httpx.HTTPError) as error:
+    except (ChatError, httpx.HTTPError) as error:
         log.warning("reply to a message failed: %s", type(error).__name__)
 
 
 def receive(
     db: Database,
-    telegram: Telegram,
+    telegram: Chat,
     posts: Iterable[Submission],
     media_root: Path,
     origin: str,
     limiter: RateLimiter,
+    channel: Channel = Channel.TELEGRAM,
 ) -> list[str]:
     """Turn each post into a case and acknowledge it. Returns the new case ids."""
     created: list[str] = []
@@ -276,7 +286,7 @@ def receive(
         for file_id, _ in post.files:
             try:
                 data = telegram.download(file_id)
-            except (TelegramError, httpx.HTTPError) as error:
+            except (ChatError, httpx.HTTPError) as error:
                 log.warning("file download failed: %s", type(error).__name__)
                 problem = NOT_RECEIVED
                 break
@@ -296,7 +306,7 @@ def receive(
             continue
 
         with db.session.begin() as session:
-            create_case(session, case_id, Channel.TELEGRAM, post.text, post.url, stored)
+            create_case(session, case_id, channel, post.text, post.url, stored)
             session.add(
                 TelegramReport(case_id=case_id, chat_id=post.chat_id, message_id=post.message_id)
             )
@@ -364,12 +374,13 @@ def news_for(session: Session, case: Case, origin: str) -> tuple[int, str] | Non
     return None
 
 
-def notify(db: Database, telegram: Telegram, origin: str) -> int:
-    """Message every submitter whose report has news. Returns how many were sent."""
+def notify(db: Database, telegram: Chat, origin: str, channel: Channel = Channel.TELEGRAM) -> int:
+    """Message every submitter on this channel whose report has news. Returns how many."""
     sent = 0
     with db.session.begin() as session:
         # shortcut: scans every report each poll; add a done flag once there are thousands.
-        for report in session.scalars(select(TelegramReport)):
+        reports = select(TelegramReport).join(Case).where(Case.channel == channel)
+        for report in session.scalars(reports):
             case = session.get_one(Case, report.case_id)
             messages: list[str] = []
             if not report.asked_for_media and needs_media(case):
@@ -383,7 +394,7 @@ def notify(db: Database, telegram: Telegram, origin: str) -> int:
                 for text in messages:
                     telegram.send(report.chat_id, text, reply_to=report.message_id)
                     sent += 1
-            except TelegramError as error:
+            except ChatError as error:
                 if error.status != httpx.codes.FORBIDDEN.value:  # the user blocked the bot
                     log.warning("case %s: message not sent (%s)", case.id, error.status)
                     continue
@@ -410,8 +421,8 @@ def main() -> int:
     limiter = RateLimiter(SUBMISSIONS_PER_MINUTE)
     try:
         me: dict[str, Any] = telegram.call("getMe")
-    except (TelegramError, httpx.HTTPError) as error:
-        detail = error if isinstance(error, TelegramError) else type(error).__name__
+    except (ChatError, httpx.HTTPError) as error:
+        detail = error if isinstance(error, ChatError) else type(error).__name__
         print(f"could not reach the bot: {detail}", file=sys.stderr)
         return 1
     log.info("bot @%s ready", me.get("username"))
@@ -424,7 +435,7 @@ def main() -> int:
                 params["offset"] = offset
             try:
                 updates: list[dict[str, Any]] = telegram.call("getUpdates", **params)
-            except (TelegramError, httpx.HTTPError) as error:
+            except (ChatError, httpx.HTTPError) as error:
                 log.warning("getUpdates failed (%s); retrying", type(error).__name__)
                 time.sleep(5)
                 updates = []

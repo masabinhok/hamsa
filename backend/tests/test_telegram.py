@@ -16,9 +16,9 @@ from app.telegram import (
     MERGED,
     TOO_BIG,
     UNSUPPORTED,
+    ChatError,
     Submission,
     Telegram,
-    TelegramError,
     notify,
     receive,
     submissions,
@@ -222,6 +222,7 @@ def telegram_case(db: Database, case_id: str, chat_id: int = 42) -> None:
     add_routed_case(db, case_id, result)
     with db.session.begin() as session:
         session.add(TelegramReport(case_id=case_id, chat_id=chat_id, message_id=5))
+        session.get_one(Case, case_id).channel = Channel.TELEGRAM
 
 
 def publish_case(db: Database, case_id: str, rationale_en: str = "It is old footage.") -> None:
@@ -266,6 +267,7 @@ def test_a_merged_report_hears_the_earlier_reports_verdict(db: Database) -> None
     with db.session.begin() as session:
         create_case(session, "second", Channel.TELEGRAM, "same post", None, [])
         session.add(TelegramReport(case_id="second", chat_id=42, message_id=9))
+        session.get_one(Case, "second").channel = Channel.TELEGRAM
     merge = RouteDecision(route=Route.MERGE, reasons=["same media"], merge_into="first")
     with db.session.begin() as session:
         claimed = claim_job(session)
@@ -286,6 +288,7 @@ def test_an_unopenable_link_asks_for_the_file_once(db: Database) -> None:
     with db.session.begin() as session:
         session.get_one(Case, "c1").source_url = "https://www.facebook.com/reel/1"
         session.add(TelegramReport(case_id="c1", chat_id=42, message_id=5))
+        session.get_one(Case, "c1").channel = Channel.TELEGRAM
     assert notify(db, api.client(), ORIGIN) == 1
     assert notify(db, api.client(), ORIGIN) == 0
     assert "Send the photo or video here" in api.sent[0]["text"]
@@ -297,6 +300,7 @@ def test_the_file_sent_after_the_ask_joins_the_same_report(db: Database, tmp_pat
     with db.session.begin() as session:
         session.get_one(Case, "c1").source_url = "https://www.facebook.com/reel/1"
         session.add(TelegramReport(case_id="c1", chat_id=42, message_id=5))
+        session.get_one(Case, "c1").channel = Channel.TELEGRAM
     notify(db, api.client(), ORIGIN)  # asks for the file
 
     created = run_receive(db, api, [Submission(42, 9, files=[("big", 10)])], tmp_path)
@@ -322,6 +326,6 @@ def test_a_user_who_blocked_the_bot_is_not_retried(db: Database) -> None:
 
 def test_errors_never_carry_the_token() -> None:
     api = FakeBotApi()
-    with pytest.raises(TelegramError) as raised:
+    with pytest.raises(ChatError) as raised:
         api.client().call("noSuchMethod")
     assert TOKEN not in str(raised.value)

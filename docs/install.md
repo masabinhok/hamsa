@@ -64,6 +64,18 @@ Readers can forward doubtful posts to a Telegram bot instead of opening the webs
 
 The bot replies to each post with its report link, and messages the reader again when a verdict is published. `docker compose logs -f telegram` shows what it receives.
 
+### Messenger bot (optional)
+
+Readers can also message a Facebook Page. Meta delivers messages to a webhook, so the bot needs a public HTTPS address; a free Cloudflare tunnel gives one without opening a port.
+
+1. Create a Facebook Page, then an app at [developers.facebook.com](https://developers.facebook.com) (type "Business") and add the **Messenger** product.
+2. Under Messenger → API settings, connect the Page and generate a **Page access token**. Under App settings → Basic, copy the **App secret**. Choose any **verify token**.
+3. Set `MESSENGER_PAGE_TOKEN`, `MESSENGER_APP_SECRET` and `MESSENGER_VERIFY_TOKEN` in `.env`, and start it: `docker compose --profile messenger up -d`.
+4. Open a tunnel: `cloudflared tunnel --url http://localhost:8001`. It prints an `https://….trycloudflare.com` address.
+5. In the app's webhook settings, set the callback URL to that address plus `/webhook`, enter the verify token, and subscribe the Page to `messages`.
+
+While the app is in development mode, only the Page's admins, developers and testers can message it, which is enough for a newsroom's own use; anyone else needs Meta's app review. Every webhook body is checked against the app secret's signature, and anything unsigned is refused.
+
 ## Look after it
 
 | Task | Command |
@@ -78,4 +90,5 @@ The bot replies to each post with its report link, and messages the reader again
 - **Linux only.** The backend uses host networking to reach Ollama.
 - **Links to private or deleted posts** cannot be opened; the report page (and the Telegram bot) asks the reader for the file instead.
 - **Telegram files over 20 MB** are not passed to bots; the bot asks for the post's link instead.
+- **Messenger replies are only allowed within 24 hours** of the reader's last message, so a verdict published later than that does not reach them on Messenger; the report page still has it.
 - **The first report of new footage still needs a checker.** Hamsa recognises footage it has seen before; it does not search the web for originals (ADR 0011 explains why).

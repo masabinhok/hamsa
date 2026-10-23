@@ -47,6 +47,15 @@ services:
     command: python -m app.telegram
     profiles: [telegram]
 
+  # Optional: docker compose --profile messenger up -d (needs the three MESSENGER_* values).
+  # Meta reaches the webhook through a tunnel to 127.0.0.1:8001 (docs/install.md).
+  messenger:
+    <<: *backend
+    command: python -m app.messenger
+    ports:
+      - "127.0.0.1:8001:8001"
+    profiles: [messenger]
+
   # Web search for evidence the trusted corpus lacks; Hamsa skips it while SEARXNG_URL is unset.
   searxng:
     image: searxng/searxng:2026.10.19-81371861f
