@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from sqlalchemy import select
 
 from app.api.main import RateLimiter, create_app, sniff_suffix
+from app.pipeline.contracts import Duplicate, DuplicateBasis
 from app.store.cases import Database, claim_job, complete_job
 from app.store.models import Case
 from tests.factories import cite, hit, outputs, passage, verdict
@@ -436,3 +437,19 @@ def test_translation_needs_a_model_and_a_checker(client: TestClient) -> None:
     unconfigured = client.post("/desk/translate", json={"english": "x"}, headers=AUTH)
     assert unconfigured.status_code == 503
     assert client.post("/desk/translate", json={"english": "x"}).status_code == 401
+
+
+def test_a_repeat_shows_the_verdict_it_was_merged_into(client: TestClient, db: Database) -> None:
+    add_routed_case(db, "c1")
+    assert client.post(
+        "/desk/cases/c1/decision", json={"action": "publish", "checker": "Asha"}, headers=AUTH
+    ).is_success
+    add_routed_case(
+        db,
+        "c2",
+        routed_result(outputs(duplicate=Duplicate(case_id="c1", basis=DuplicateBasis.LINK))),
+    )
+    repeat = client.get("/cases/c2").json()
+    assert repeat["merged_into"] == "c1"
+    assert repeat["verdict"]["label"] == client.get("/cases/c1").json()["verdict"]["label"]
+    assert repeat["verdict"]["media"] == []  # served under c1, which the page links to
