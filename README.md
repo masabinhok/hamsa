@@ -81,15 +81,15 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media |
 | Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing) | `retrieve` in `backend/app/pipeline/retrieve.py`, and `WebSearch._passage` in `backend/app/pipeline/web_search.py` for web pages (cosine decides whether a page is evidence) → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
 | Verdict | gpt-oss-120b (Groq); fallback Qwen3-VL-8B (local) | `judge` in `backend/app/pipeline/verdict.py` → label, confidence, and cited passages with stances decide the fast-track, conflict, and human-review rules in `backend/app/router/route.py`; the Nepali rationale is the published explanation |
-| Fact-check relevance gate | gpt-oss-20b (Groq) | `covering` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.covers` decides which fact-checks, searched or from the corpus, enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py` |
-| Rationale translation | gpt-oss-120b (Groq) | `translate` in `backend/app/pipeline/verdict.py`, served by `POST /desk/translate` in `backend/app/api/main.py` → the Nepali rationale a checker publishes after editing the English; checked by the row below before it is shown |
-| Nepali rationale check | gpt-oss-20b (Groq) | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`, and the `issue` the desk shows after a translation; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
+| Fact-check relevance gate | gpt-oss-20b (Groq); offline: Qwen3-VL-8B (local) | `covering` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.covers` decides which fact-checks, searched or from the corpus, enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py` |
+| Rationale translation | gpt-oss-120b (Groq); offline: Qwen3-VL-8B (local), always marked "read every word" | `translate` in `backend/app/pipeline/verdict.py`, served by `POST /desk/translate` in `backend/app/api/main.py` → the Nepali rationale a checker publishes after editing the English; checked by the row below before it is shown |
+| Nepali rationale check | gpt-oss-20b (Groq); offline: Qwen3-VL-8B (local) for verdicts | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`, and the `issue` the desk shows after a translation; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
 
 ## Running locally
 
 **Setting Hamsa up for a fact-checking desk?** Follow [docs/install.md](docs/install.md): Ollama on the host, then `docker compose up -d --build` starts the API, worker, corpus watcher, website and vector store. The steps below are for developing Hamsa itself.
 
-Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](https://ollama.com), an NVIDIA GPU with 8 GB VRAM (recommended), and a free [Groq](https://console.groq.com) API key (optional: without it, verdicts run on the local model).
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](https://ollama.com), an NVIDIA GPU with 8 GB VRAM (recommended), and a free [Groq](https://console.groq.com) API key (optional: without it, every model call runs on the local Qwen3-VL and Hamsa works offline; every verdict then goes to a checker, since the fast-track rules were calibrated on gpt-oss).
 
 ```bash
 docker compose up -d                          # Qdrant
