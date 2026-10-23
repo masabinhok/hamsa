@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import httpx
 
 from app.llm.structured import StructuredOutputError
@@ -5,9 +7,11 @@ from app.pipeline.claim_reviews import (
     MAX_REVIEWS,
     ClaimReviewSearch,
     add_reviews,
+    covering,
     parse,
     review_queries,
     same_claim_only,
+    vetted,
 )
 from app.pipeline.contracts import Claim, Evidence, Passage, SourceKind
 from tests.factories import claim, passage
@@ -147,7 +151,8 @@ def test_only_reviews_judged_about_this_post_are_kept() -> None:
         answer(True, "not described"),  # a claim about a cause, not a video
     )
     http = httpx.Client(transport=httpx.MockTransport(site))
-    kept = same_claim_only(search, (judge, "gate-model"), http)(claim(visible_text=["Juneau"]))
+    vet = covering((judge, "gate-model"), http)
+    kept = same_claim_only(search, vet)(claim(visible_text=["Juneau"]))
 
     assert [p.source for p in kept] == ["Checker 2", "Checker 3"]
     assert len(judge.prompts) == MAX_REVIEWS + 2  # stops once the evidence slots are full
@@ -173,3 +178,20 @@ def test_a_fact_check_of_other_footage_never_covers_a_post_that_shows_footage() 
     assert not other.covers(sky)  # the Sky News report, drafted false on this
     assert other.covers(claim())  # a text post has no footage to differ
     assert SameClaim.model_validate(answer(True, "not described")).covers(sky)
+
+
+def test_corpus_fact_checks_are_vetted_and_news_is_left_alone() -> None:
+    other = passage("c1", "Nepal Factcheck", source_kind=SourceKind.FACT_CHECK)
+    right = passage("c2", "AFP Fact Check", source_kind=SourceKind.FACT_CHECK)
+    news = passage("n1", "Onlinekhabar")
+    evidence = Evidence(passages=[other, news, right])
+    seen: list[Passage] = []
+
+    def vet(_: Claim, reviews: Sequence[Passage], enough: int | None) -> list[Passage]:
+        seen.extend(reviews)
+        return [right]
+
+    kept = vetted(claim(), evidence, vet)
+    assert [p.passage_id for p in kept.passages] == ["n1", "c2"]
+    assert seen == [other, right]  # news never reaches the judge
+    assert vetted(claim(), evidence, None) is evidence
