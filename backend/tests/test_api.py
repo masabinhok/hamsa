@@ -424,10 +424,16 @@ def test_a_checkers_english_is_translated_and_checked(db: Database, tmp_path: Pa
     assert response.json() == {"nepali": "भिडियो अलास्काको हो।", "issue": None}
 
 
-def test_a_failed_translation_asks_for_the_nepali_by_hand(db: Database, tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure", ["groq", "local"])
+def test_a_failed_translation_asks_for_the_nepali_by_hand(
+    db: Database, tmp_path: Path, failure: str
+) -> None:
+    import httpx
+
     from app.llm.groq import ReasonerUnavailable
 
-    client = translating_client(db, tmp_path, ReasonerUnavailable("groq down"))
+    down = ReasonerUnavailable("groq down") if failure == "groq" else httpx.ConnectError("down")
+    client = translating_client(db, tmp_path, down)
     response = client.post("/desk/translate", json={"english": "The video is old."}, headers=AUTH)
     assert response.status_code == 503
     assert "by hand" in response.json()["detail"]

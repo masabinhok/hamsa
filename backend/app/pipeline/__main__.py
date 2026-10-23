@@ -38,6 +38,10 @@ def build_pipeline(settings: Settings) -> Pipeline:
         # 29 eval verdicts; at low it answered all 30 of an earlier test.
         low = GroqClient(settings.groq_api_key.get_secret_value(), reasoning_effort="low")
         checker = (low, settings.checking_model)
+    else:
+        # No hosted provider: the checks run on the local model too, so Hamsa works offline
+        # instead of dropping the fact-check gate and the Nepali check (ADR 0001).
+        checker = (ollama, settings.vision_model)
     reasoners.append((ollama, settings.vision_model))  # fallback (ADR 0001, 0007)
 
     vet = covering(checker) if checker else None
@@ -55,6 +59,7 @@ def build_pipeline(settings: Settings) -> Pipeline:
         evidence=EvidenceStore(qdrant),
         embed_text=embed_text,
         reasoners=reasoners,
+        hosted=len(reasoners) - 1,  # the local model is always last
         nepali_checker=checker,
         find_reviews=(
             same_claim_only(ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()), vet)

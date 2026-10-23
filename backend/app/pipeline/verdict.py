@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Annotated, Any, Protocol
 
+import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.llm.groq import ReasonerUnavailable
@@ -166,13 +167,13 @@ def check_nepali(english: str, nepali: str, checker: tuple[Reasoner, str] | None
     checker caught both planted flips and 3 real problems in 28 eval verdicts.
     """
     if checker is None:
-        return "not checked: no checking model configured"
+        return "not checked by a hosted model; read every word, the local model mistranslates"
     client, model = checker
     try:
         result = client.structured(
             model, NepaliCheck, NEPALI_CHECK_SYSTEM, f"English:\n{english}\n\nNepali:\n{nepali}"
         )
-    except (ReasonerUnavailable, StructuredOutputError) as error:
+    except (ReasonerUnavailable, StructuredOutputError, httpx.HTTPError) as error:
         return f"not checked: {error}"
     return None if result.faithful else (result.problem.strip() or "the meaning differs")
 
@@ -277,8 +278,11 @@ def judge(
     has_media: bool,
     posted_on: date | None = None,
     checker: tuple[Reasoner, str] | None = None,
+    hosted: int = 1,
 ) -> Verdict:
-    """Ask each (client, model) in order until one returns a valid draft."""
+    """Ask each (client, model) in order until one returns a valid draft. The first `hosted`
+    reasoners are the ones the router was calibrated on; a draft from any later one (the
+    local model) is a fallback, and a human reads it."""
     labels = labels_for(evidence)
     schema = draft_schema(labels)
     prompt = build_prompt(claim, media, evidence, has_media, posted_on)
@@ -329,7 +333,7 @@ def judge(
             event_finding=draft.event_finding,
             number_finding=draft.number_finding,
             model=model,
-            fallback=position > 0,
+            fallback=position >= hosted,
             nepali_issue=check_nepali(rationale_en, rationale_ne, checker),
         )
     raise StructuredOutputError("; ".join(failures) or "no reasoner configured")

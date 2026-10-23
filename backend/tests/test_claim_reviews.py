@@ -195,3 +195,10 @@ def test_corpus_fact_checks_are_vetted_and_news_is_left_alone() -> None:
     assert [p.passage_id for p in kept.passages] == ["n1", "c2"]
     assert seen == [other, right]  # news never reaches the judge
     assert vetted(claim(), evidence, None) is evidence
+
+
+def test_a_local_model_that_fails_drops_the_fact_check_instead_of_the_case() -> None:
+    review = passage("r1", "AFP Fact Check", source_kind=SourceKind.FACT_CHECK)
+    judge = FakeReasoner(httpx.ConnectError("ollama down"))
+    http = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(404)))
+    assert covering((judge, "local-model"), http)(claim(), [review], None) == []

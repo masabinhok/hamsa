@@ -43,6 +43,8 @@ class Pipeline:
     evidence: EvidenceStore
     embed_text: EmbedText
     reasoners: Sequence[tuple[Reasoner, str]]
+    # How many reasoners come before the local fallback: 1 with Groq, 0 offline.
+    hosted: int = 1
     nepali_checker: tuple[Reasoner, str] | None = None
     # Fact-checks published anywhere (ADR 0012); None without an API key.
     find_reviews: FindReviews | None = None
@@ -159,6 +161,7 @@ def run(
             has_media=bool(frames),
             posted_on=seen_on,
             checker=pipeline.nepali_checker,
+            hosted=pipeline.hosted,
         ),
     )
     return finish(claim=claim, media_match=matched, evidence=evidence, verdict=verdict)

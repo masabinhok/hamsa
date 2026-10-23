@@ -200,7 +200,8 @@ def covering(judge: tuple[Reasoner, str], http: httpx.Client | None = None) -> V
             prompt = gate_prompt(claim, review, _article(http, str(review.url)))
             try:
                 answer = client.structured(model, SameClaim, GATE_SYSTEM, prompt)
-            except (ReasonerUnavailable, StructuredOutputError) as error:
+            # httpx: the local model (no Groq key) fails with plain HTTP errors.
+            except (ReasonerUnavailable, StructuredOutputError, httpx.HTTPError) as error:
                 log.warning("fact-check gate failed: %s", type(error).__name__)
                 continue
             if answer.covers(claim):
