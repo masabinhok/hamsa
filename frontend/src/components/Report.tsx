@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError, site, type CaseStatus, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
-import { Masthead, Mine, Recent, shortStatus, steps } from "@/components/Site";
+import { ACCEPT, MAX_FILES, MAX_FILES_NE, Masthead, Mine, Recent, shortStatus, steps } from "@/components/Site";
 import { labelName } from "@/lib/words";
 import styles from "../app/site.module.css";
 
@@ -174,15 +174,7 @@ function Status({ id }: { id: string }) {
         </section>
       )}
 
-      {current?.needs_media && !verdict && (
-        <p className={styles.error}>
-          <Both
-            ne="हामी लिंक खोल्न सकेनौं (पोस्ट निजी वा हटाइएको हुन सक्छ)। कृपया फोटो वा भिडियो जोडेर फेरि पठाउनुहोस्।"
-            en="We could not open the link (the post may be private or deleted). Please send it again with the photo or video attached."
-          />{" "}
-          <Link href="/">पठाउनुहोस् · Send again</Link>
-        </p>
-      )}
+      {current?.needs_media && current.status === "routed" && <SendMedia id={current.id} />}
 
       {current?.merged_into && (
         <p className={styles.notice}>
@@ -285,5 +277,63 @@ function Status({ id }: { id: string }) {
 
       {verdict && tracking}
     </article>
+  );
+}
+
+// The report page polls, so once this lands the steps move on by themselves.
+function SendMedia({ id }: { id: string }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<[string, string] | null>(null);
+
+  async function send(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const files = form.getAll("files").filter((f) => f instanceof File && f.size > 0);
+    if (files.length === 0 || files.length > MAX_FILES) {
+      setError([`१ देखि ${MAX_FILES_NE} वटा फाइल जोड्नुहोस्।`, `Attach 1 to ${MAX_FILES} files.`]);
+      return;
+    }
+    setState("sending");
+    setError(null);
+    try {
+      await site.sendMedia(id, form);
+      setState("sent");
+    } catch (failure) {
+      setState("idle");
+      setError([
+        "पठाउन सकिएन। फेरि प्रयास गर्नुहोस्।",
+        `Could not send it: ${failure instanceof Error ? failure.message : "unknown error"}.`,
+      ]);
+    }
+  }
+
+  if (state === "sent") {
+    return (
+      <p className={styles.notice} role="status">
+        <Both ne="पायौं। यही रिपोर्ट फेरि जाँच हुँदैछ।" en="Received. This report is being checked again." />
+      </p>
+    );
+  }
+  return (
+    <form className={styles.form} onSubmit={send} aria-labelledby="needs-media">
+      <p id="needs-media" className={styles.error}>
+        <Both
+          ne="हामी लिंक खोल्न सकेनौं (पोस्ट निजी वा हटाइएको हुन सक्छ)। पोस्टको फोटो वा भिडियो यहाँ जोड्नुहोस्।"
+          en="We could not open the link (the post may be private or deleted). Attach the post's photo or video here."
+        />
+      </p>
+      <label className={styles.field}>
+        <Both ne="फोटो वा भिडियो" en={`Photo or video (up to ${MAX_FILES}, 100 MB each)`} />
+        <input name="files" type="file" accept={ACCEPT} multiple required />
+      </label>
+      {error && (
+        <p className={styles.error} role="alert">
+          <Both ne={error[0]} en={error[1]} />
+        </p>
+      )}
+      <button className={styles.submit} disabled={state === "sending"}>
+        {state === "sending" ? "पठाउँदै… Sending…" : "पठाउनुहोस् · Send"}
+      </button>
+    </form>
   );
 }

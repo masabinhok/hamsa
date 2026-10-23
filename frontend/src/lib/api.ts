@@ -162,6 +162,9 @@ export interface PublicCase {
 export const site = {
   submit: (form: FormData) => request<{ id: string }>("/cases", { method: "POST", body: form }),
   case: (id: string) => request<PublicCase>(`/cases/${encodeURIComponent(id)}`),
+  // The file behind a link the worker could not open; the same report is checked again.
+  sendMedia: (id: string, form: FormData) =>
+    request<PublicCase>(`/cases/${encodeURIComponent(id)}/media`, { method: "POST", body: form }),
   verdicts: () => request<PublicCase[]>("/verdicts"),
   // Served only once a checker has published the report.
   mediaUrl: (id: string, name: string) =>

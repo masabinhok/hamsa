@@ -1,7 +1,7 @@
 /* Public site: send a post (or browse reports) on the left, read on the right. */
 .site {
   /* Devanagari needs a larger size than Latin to read comfortably. */
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   line-height: 1.65;
 }
 
@@ -157,6 +157,16 @@
   padding: var(--space-4) var(--space-3);
   border-style: dashed;
   cursor: pointer;
+}
+
+.more summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-block: var(--space-2);
+}
+
+.more[open] summary {
+  margin-bottom: var(--space-3);
 }
 
 .hint {
