@@ -288,7 +288,26 @@ def test_an_unopenable_link_asks_for_the_file_once(db: Database) -> None:
         session.add(TelegramReport(case_id="c1", chat_id=42, message_id=5))
     assert notify(db, api.client(), ORIGIN) == 1
     assert notify(db, api.client(), ORIGIN) == 0
-    assert "send the photo or video itself" in api.sent[0]["text"]
+    assert "Send the photo or video here" in api.sent[0]["text"]
+
+
+def test_the_file_sent_after_the_ask_joins_the_same_report(db: Database, tmp_path: Path) -> None:
+    api = FakeBotApi(files={"big": jpeg()})
+    add_routed_case(db, "c1")
+    with db.session.begin() as session:
+        session.get_one(Case, "c1").source_url = "https://www.facebook.com/reel/1"
+        session.add(TelegramReport(case_id="c1", chat_id=42, message_id=5))
+    notify(db, api.client(), ORIGIN)  # asks for the file
+
+    created = run_receive(db, api, [Submission(42, 9, files=[("big", 10)])], tmp_path)
+    assert created == []  # no second report beside the first
+    with db.session() as session:
+        case = session.get_one(Case, "c1")
+        assert (case.status, len(case.media)) == (CaseStatus.RECEIVED, 1)
+    assert "checked again" in api.sent[-1]["text"]
+    # Once it has its file, the next photo is a new report again; so is another chat's.
+    assert len(run_receive(db, api, [Submission(42, 10, files=[("big", 10)])], tmp_path)) == 1
+    assert len(run_receive(db, api, [Submission(7, 11, files=[("big", 10)])], tmp_path)) == 1
 
 
 def test_a_user_who_blocked_the_bot_is_not_retried(db: Database) -> None:
