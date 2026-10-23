@@ -6,7 +6,7 @@ reasons that fired it, so a checker can see why a case landed where it did.
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from app.pipeline.contracts import (
     ArchiveHit,
@@ -44,6 +44,8 @@ AI_TOOL_MARKS = (
 
 REFUTING_LABELS = (VerdictLabel.FALSE, VerdictLabel.MISLEADING)
 FOOTAGE_REFUTED = (MediaFinding.ELSEWHERE, MediaFinding.AI_GENERATED)
+# How long after an event reports about it keep appearing (NEWS_AFTER in retrieve.py).
+REPORTS_AFTER = timedelta(days=14)
 # The context teach() (app/learn.py) gives footage from a case a checker published.
 PUBLISHED_ON_HAMSA = re.compile(r"(Verified genuine|Debunked) on Hamsa(?: as (false|misleading))?:")
 
@@ -117,7 +119,8 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
     strong_prior = recycled_hits(outputs, thresholds)
     ai_marks = _ai_tool_marks(claim)
     dated = outputs.posted_on is not None or claim.claimed_date is not None
-    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks, dated=dated)
+    posted = None if claim.claimed_date else outputs.posted_on
+    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks, dated=dated, posted=posted)
     label = verdict.label
 
     def decide(route: Route, reasons: list[str]) -> RouteDecision:
@@ -200,6 +203,17 @@ def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> 
         for hit in outputs.media_match.hits
         if is_strong_match(hit, t) and _is_older_footage(hit, reference, since, t)
     ]
+
+
+def _confirmed_only_later(verdict: Verdict, evidence: Evidence, posted: date) -> date | None:
+    """The cut-off, when every dated report supporting a true verdict comes after it."""
+    cutoff = posted + REPORTS_AFTER
+    dates = [
+        p.published_at.date()
+        for c in verdict.citations
+        if c.stance is Stance.SUPPORTS and (p := evidence.by_id(c.passage_id)) and p.published_at
+    ]
+    return cutoff if dates and min(dates) > cutoff else None
 
 
 def _published_label(hit: ArchiveHit) -> VerdictLabel | None:
@@ -321,8 +335,16 @@ def _conflicts(
     ai_marks: list[str],
     *,
     dated: bool,
+    posted: date | None = None,
 ) -> list[str]:
     conflicts: list[str] = []
+    if (
+        verdict.label is VerdictLabel.TRUE
+        and posted
+        and (later := _confirmed_only_later(verdict, evidence, posted))
+    ):
+        # "Floods in Nepal" posted on 1 March was confirmed by reports of the August floods.
+        conflicts.append(f"every report confirming it is from after {later}: a later event?")
     if verdict.label is VerdictLabel.TRUE:
         if strong_prior:
             conflicts.append(
