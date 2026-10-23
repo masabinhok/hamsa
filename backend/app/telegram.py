@@ -30,6 +30,7 @@ from app.config import get_settings
 from app.store.cases import (
     Database,
     StoredMedia,
+    add_sent_media,
     answered_by,
     create_case,
     new_case_id,
@@ -79,14 +80,17 @@ MERGED = (
     "Someone already sent this post. It is being checked under that report; we will tell you "
     "the verdict."
 )
+CHECKING_AGAIN = (
+    "फाइल पायौं। तपाईंको रिपोर्ट फेरि जाँच हुँदैछ।\nGot the file. Your report is being checked again."
+)
 REJECTED = (
     "निर्णय प्रकाशित भएन: पोस्टमा जाँच्न मिल्ने तथ्यगत दाबी छैन।\n"
     "No verdict was published: the post makes no factual claim that can be checked."
 )
 ASK_FOR_MEDIA = (
-    "हामी लिंक खोल्न सकेनौं (पोस्ट निजी वा हटाइएको हुन सक्छ)। फोटो वा भिडियो नै पठाउनुहोस्।\n"
-    "We could not open the link (the post may be private or deleted). Please send the photo "
-    "or video itself."
+    "हामी लिंक खोल्न सकेनौं (पोस्ट निजी वा हटाइएको हुन सक्छ)। फोटो वा भिडियो यहीँ पठाउनुहोस्।\n"
+    "We could not open the link (the post may be private or deleted). Send the photo or "
+    "video here, and we will check it under the same report."
 )
 
 
@@ -265,7 +269,8 @@ def receive(
             _reply(telegram, post, SLOW_DOWN)
             continue
 
-        case_id = new_case_id()
+        waiting = _waiting_for_media(db, post) if post.files and not post.url else None
+        case_id = waiting or new_case_id()
         stored: list[StoredMedia] = []
         problem: str | None = None
         for file_id, _ in post.files:
@@ -284,6 +289,12 @@ def receive(
             _reply(telegram, post, problem)
             continue
 
+        if waiting is not None:
+            with db.session.begin() as session:
+                add_sent_media(session, session.get_one(Case, waiting), stored)
+            _reply(telegram, post, f"{CHECKING_AGAIN}\n\n{status_link(origin, waiting)}")
+            continue
+
         with db.session.begin() as session:
             create_case(session, case_id, Channel.TELEGRAM, post.text, post.url, stored)
             session.add(
@@ -298,6 +309,22 @@ def receive(
             f"fact-checkers publish a verdict.\n\n{status_link(origin, case_id)}",
         )
     return created
+
+
+def _waiting_for_media(db: Database, post: Submission) -> str | None:
+    """This chat's newest report the bot asked a file for, while it still waits for one:
+    the file belongs to that report, not to a new one beside it."""
+    with db.session() as session:
+        reports = session.scalars(
+            select(TelegramReport)
+            .where(TelegramReport.chat_id == post.chat_id, TelegramReport.asked_for_media)
+            .order_by(TelegramReport.message_id.desc())
+        )
+        for report in reports:
+            case = session.get_one(Case, report.case_id)
+            if case.status is CaseStatus.ROUTED and needs_media(case):
+                return case.id
+    return None
 
 
 def status_link(origin: str, case_id: str) -> str:
