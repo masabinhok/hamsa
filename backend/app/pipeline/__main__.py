@@ -16,7 +16,7 @@ from app.config import Settings, get_settings
 from app.ingest.frames import Frame
 from app.llm.groq import GroqClient
 from app.llm.ollama import OllamaClient
-from app.pipeline.claim_reviews import ClaimReviewSearch, same_claim_only
+from app.pipeline.claim_reviews import ClaimReviewSearch, covering, same_claim_only
 from app.pipeline.contracts import Claim
 from app.pipeline.extract import extract_claim
 from app.pipeline.media_match import ArchiveIndex, SiglipEmbedder
@@ -40,6 +40,8 @@ def build_pipeline(settings: Settings) -> Pipeline:
         checker = (low, settings.checking_model)
     reasoners.append((ollama, settings.vision_model))  # fallback (ADR 0001, 0007)
 
+    vet = covering(checker) if checker else None
+
     def extract(text: str | None, frames: Sequence[Frame]) -> Claim:
         return extract_claim(ollama, settings.vision_model, text, frames)
 
@@ -55,12 +57,11 @@ def build_pipeline(settings: Settings) -> Pipeline:
         reasoners=reasoners,
         nepali_checker=checker,
         find_reviews=(
-            same_claim_only(
-                ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()), checker
-            )
-            if settings.fact_check_api_key and checker
+            same_claim_only(ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()), vet)
+            if settings.fact_check_api_key and vet
             else None
         ),
+        vet_fact_checks=vet,
         find_web=WebSearch(str(settings.searxng_url), embed_text) if settings.searxng_url else None,
     )
 

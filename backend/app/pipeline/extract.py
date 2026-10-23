@@ -40,6 +40,11 @@ Gregorian (2015) or Nepali calendar (२०८२ is 2082); null if no year is s
 - numbers: every number the claim depends on (deaths, missing, rainfall, money); \
 unit and refers_to in English, e.g. value 50, unit "people", refers_to "missing".
 - visible_text: on-screen text in the frames (captions, banners, signs), verbatim.
+- scene: one plain English sentence on what the frames show, concrete enough to tell \
+this footage from other footage of the same disaster: the setting, what moves, and \
+distinctive objects (e.g. "a muddy river sweeps a three-storey house past a suspension \
+bridge" or "a news anchor in a studio, then aerial shots of a flooded valley"). Empty \
+with no frames.
 - watermarks: logos, channel marks, and generator marks visible in the frames, such as \
 a TV channel logo or "Veo", "Sora", or "Gemini". Empty if none.
 - handles: usernames or page names visible in the text or frames, such as @name.
