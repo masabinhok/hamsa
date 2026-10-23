@@ -21,12 +21,14 @@ This is the contract for how Hamsa works: what each part takes in, what it retur
 flowchart LR
     citizen([Citizen or journalist]) -->|post, link, or media| web[Web submit form]
     citizen -->|forwarded post| tg[Telegram bot]
+    citizen -->|message to a Page| fb[Messenger bot]
     checker([Fact-checker]) --> desk[Checker desk]
     public([Public]) --> feed[Published verdicts]
 
     subgraph hamsa [Hamsa on one machine]
         web --> api[FastAPI]
         tg --> db
+        fb --> db
         desk --> api
         feed --> api
         api --> db[(SQLite<br/>cases, jobs, decisions)]
@@ -143,7 +145,7 @@ A hit on `prior` footage is evidence that the post is recycled. A hit on `verifi
 - **post id:** the platform's own id from yt-dlp (`Youtube:EmM79Xzvbg0`, kept in the `post_ids` table), which survives share links and redirects.
 - **exact media:** any file's `sha256`. Against a decided report only when the new post has the same words or none: a new caption can make genuine footage a false claim, so that copy is checked afresh, and the archive tells the verdict what the checker decided about the footage.
 
-A repeat of a decided report answers the sender at once: Telegram sends that verdict, and the web report shows it. Only earlier cases count, so a first report never merges into its own later copy.
+A repeat of a decided report answers the sender at once: the Telegram or Messenger bot sends that verdict, and the web report shows it. Only earlier cases count, so a first report never merges into its own later copy.
 
 A later case is also a duplicate of an earlier open case if it makes **the same claim**: after extraction, the bge-m3 cosine between `claim_en` values is 0.92 or more *and* a place overlaps, where one place name containing the other counts ("बुटवल" and "बुटवल उपमहानगरपालिका"). `claim_duplicate` in `backend/app/pipeline/duplicate.py`. *Starting value.*
 
@@ -297,6 +299,8 @@ Implemented in `backend/app/store/`.
 **Submitter.** Pastes a link, text, or media into the web form, then gets a case id and a status page. When the case is published, the status page shows the verdict in Nepali and English with sources.
 
 **Telegram submitter.** Forwards a post, or sends its link, photo or video, to the bot (`backend/app/telegram.py`, long polling, so no public address is needed). The bot writes the case like the API does (`Channel.TELEGRAM`) and replies with the report link. A `telegram_reports` row remembers the chat; each poll the bot sends news it has not sent yet: the published verdict with sources, a rejection, a merge into an earlier report (and later that report's verdict), or a request for the file when the link could not be opened. The photo or video the sender then sends joins that same report, which is checked again, instead of starting a new one beside it (as the web report page's upload does). Only direct messages count, so a group cannot flood the desk. Files over 20 MB are refused by the Bot API, so the bot asks for the link instead.
+
+**Messenger submitter.** The same flow over a Facebook Page (`backend/app/messenger.py`): Meta posts each message to a webhook, which refuses any body not signed with the app secret, and the bot reuses the Telegram intake and news (`receive`, `notify`), with the case's channel saying which platform answers. A shared post arrives as a link, a photo or video as a file. Messenger allows replies only within 24 hours of the reader's last message.
 
 **Checker.**
 
