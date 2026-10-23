@@ -131,10 +131,11 @@ Stage outputs are cached in `data/eval/runs/`, so rescoring after a threshold ch
 ## Limitations and future work
 
 - Does not detect synthetic (AI-generated) media at the pixel level.
-- Accuracy depends on how complete the archive is: brand-new footage can't be matched against anything.
+- New footage nobody has checked can't be matched against anything, so it always reaches a human first; the archive grows with every published verdict and never has to be complete ([ADR 0014](docs/adr/0014-archive-is-a-memory-not-a-library.md)).
+- Private, deleted or age-restricted posts can't be fetched from their link; the sender is asked for the photo or video, on Telegram or the report page, and it joins the same report.
 - Reposts letterboxed with a blurred copy of the video (common on TikTok) are not yet matched; black bars, crops, mirroring, captions, and screenshots are ([measurements](docs/architecture.md#33-media-match-phash--siglip-cpu)).
 - Nepali OCR on low-quality video frames is imperfect.
-- Future work: a browser extension for newsrooms, more languages (Maithili, Bhojpuri), and a public verdict feed.
+- Future work: topics beyond disasters (a corpus filter, prompt wording and a labelled set per topic, [ADR 0015](docs/adr/0015-disaster-scope-and-what-widening-it-takes.md)), a browser extension for newsrooms, more languages (Maithili, Bhojpuri), and a public verdict feed.
 
 ## Licence
 
