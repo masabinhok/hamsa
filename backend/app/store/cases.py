@@ -99,6 +99,18 @@ def create_case(
     return case
 
 
+def add_sent_media(session: Session, case: Case, media: list[StoredMedia]) -> None:
+    """The submitter sent the file behind a link the worker could not open: check it again,
+    on the same case, so the desk is not left with an empty one beside a new one."""
+    case.media += [
+        Media(filename=m.filename, sha256=m.sha256, size_bytes=m.size_bytes) for m in media
+    ]
+    job = session.scalars(select(Job).where(Job.case_id == case.id)).one()
+    job.state, job.attempts, job.not_before = JobState.QUEUED, 0, utcnow()
+    job.lease_until = job.last_error = None
+    _event(session, case, SYSTEM, case.status, CaseStatus.RECEIVED, "the sender added the media")
+
+
 def claim_job(session: Session, now: datetime | None = None) -> tuple[int, str] | None:
     """Atomically take the oldest due job, or one whose lease expired (a dead worker's)."""
     now = now or utcnow()

@@ -55,6 +55,7 @@ from app.store.cases import (
     Database,
     DecisionError,
     StoredMedia,
+    add_sent_media,
     create_case,
     desk_queue,
     new_case_id,
@@ -198,22 +199,28 @@ async def submit(
     if len(uploads) > MAX_FILES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"at most {MAX_FILES} files")
 
-    media_root: Path = request.app.state.media_root
     case_id = new_case_id()
-    stored: list[StoredMedia] = []
-    for upload in uploads:
-        data = await upload.read(MAX_FILE_BYTES + 1)
-        if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file over 100 MB")
-        suffix = sniff_suffix(data)
-        if suffix is None:
-            raise HTTPException(
-                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only jpeg, png, webp, mp4, webm"
-            )
-        stored.append(save_media(media_root, case_id, data, suffix))
-
+    stored = await save_uploads(request, case_id, uploads)
     create_case(session, case_id, Channel.WEB, text, url, stored)
     return CaseCreated(id=case_id, status=CaseStatus.RECEIVED)
+
+
+@public.post("/cases/{case_id}/media", dependencies=[Depends(limit_submissions)])
+async def send_media(
+    request: Request,
+    session: DbSession,
+    case_id: str,
+    files: Annotated[list[UploadFile], File()],
+) -> PublicCase:
+    """The file behind a link the worker could not open, sent from the report page."""
+    case = get_case(session, case_id)
+    if case.status is not CaseStatus.ROUTED or not needs_media(case):
+        raise HTTPException(status.HTTP_409_CONFLICT, "this report is not waiting for media")
+    if not files or len(files) > MAX_FILES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"send 1 to {MAX_FILES} files")
+    add_sent_media(session, case, await save_uploads(request, case_id, files))
+    session.flush()
+    return public_view(case)
 
 
 @public.get("/cases/{case_id}")
@@ -348,6 +355,24 @@ def create_app(
     app.include_router(public)
     app.include_router(desk)
     return app
+
+
+async def save_uploads(
+    request: Request, case_id: str, uploads: list[UploadFile]
+) -> list[StoredMedia]:
+    media_root: Path = request.app.state.media_root
+    stored: list[StoredMedia] = []
+    for upload in uploads:
+        data = await upload.read(MAX_FILE_BYTES + 1)
+        if len(data) > MAX_FILE_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file over 100 MB")
+        suffix = sniff_suffix(data)
+        if suffix is None:
+            raise HTTPException(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only jpeg, png, webp, mp4, webm"
+            )
+        stored.append(save_media(media_root, case_id, data, suffix))
+    return stored
 
 
 def _draft(case: Case) -> dict[str, Any] | None:

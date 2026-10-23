@@ -9,9 +9,9 @@ import { labelName } from "@/lib/words";
 import styles from "../app/site.module.css";
 
 // Limits enforced by the API (backend/app/api/main.py); checked here to fail early.
-const MAX_FILES = 4;
-const MAX_FILES_NE = "४";
-const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
+export const MAX_FILES = 4;
+export const MAX_FILES_NE = "४";
+export const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
 const MINE_KEY = "hamsa.reports";
 const MINE_MAX = 20;
 
@@ -195,19 +195,25 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
           <Both ne="पोस्टमा लेखिएको कुरा" en="What the post says" />
           <textarea name="text" rows={3} maxLength={5000} />
         </label>
-        <label className={styles.field}>
-          <Both
-            ne={`फोटो वा भिडियो (बढीमा ${MAX_FILES_NE} वटा, प्रत्येक १०० MB सम्म)`}
-            en={`Its photos or video (up to ${MAX_FILES}, 100 MB each)`}
-          />
-          <input name="files" type="file" accept={ACCEPT} multiple />
-        </label>
         <p className={styles.hint}>
           <Both
-            ne="लिंक मात्र भए पनि हुन्छ। पोस्ट निजी छ भने फोटो वा भिडियो जोड्नुहोस्।"
-            en="A link alone is enough. If the post is private, attach the photo or video."
+            ne="लिंक मात्र भए पनि हुन्छ। हामी पोस्ट खोल्न सकेनौं भने फोटो वा भिडियो माग्नेछौं।"
+            en="A link alone is enough. If we cannot open the post, we will ask you for the photo or video."
           />
         </p>
+        {/* Uploading is the slow part, so it waits behind the link (Oct 23 feedback). */}
+        <details className={styles.more}>
+          <summary>
+            <Both ne="फोटो वा भिडियो पहिले नै छ?" en="Already have the photo or video?" />
+          </summary>
+          <label className={styles.field}>
+            <Both
+              ne={`फोटो वा भिडियो (बढीमा ${MAX_FILES_NE} वटा, प्रत्येक १०० MB सम्म)`}
+              en={`Its photos or video (up to ${MAX_FILES}, 100 MB each)`}
+            />
+            <input name="files" type="file" accept={ACCEPT} multiple />
+          </label>
+        </details>
         {error && (
           <p className={styles.error} role="alert">
             <Both ne={error[0]} en={error[1]} />
