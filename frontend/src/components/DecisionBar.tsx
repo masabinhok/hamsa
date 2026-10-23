@@ -27,13 +27,19 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
   const [failure, setFailure] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState<string | null>(null);
+  // The English the Nepali was written from. Checkers write English only, so an edited
+  // English must never be published beside the draft's old Nepali (Oct 22 feedback).
+  const [nepaliOf, setNepaliOf] = useState(draft?.rationale_en ?? "");
+  const stale = editing && rationaleEn.trim() !== nepaliOf.trim();
 
   async function translate() {
     setTranslating(true);
     setTranslation(null);
     try {
-      const { nepali, issue } = await desk.translate(token, rationaleEn);
+      const english = rationaleEn;
+      const { nepali, issue } = await desk.translate(token, english);
       setRationaleNe(nepali);
+      setNepaliOf(english);
       setTranslation(issue ? `Reread the Nepali: ${issue}` : "Translated. Read it once before publishing.");
     } catch (caught) {
       setTranslation(caught instanceof ApiError ? caught.message : "Translation failed; write the Nepali by hand.");
@@ -64,6 +70,11 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
   function publish(event: FormEvent) {
     event.preventDefault();
     if (!label) return;
+    if (stale) {
+      if (!translating) translate();
+      setFailure("The Nepali is being redone from your English. Read it, then publish.");
+      return;
+    }
     const edited = rationaleEn !== draft?.rationale_en || rationaleNe !== draft?.rationale_ne;
     send(
       {
@@ -149,7 +160,13 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         <div className={styles.editor}>
           <label>
             Rationale in English
-            <textarea value={rationaleEn} onChange={(e) => setRationaleEn(e.target.value)} rows={3} required />
+            <textarea
+              value={rationaleEn}
+              onChange={(e) => setRationaleEn(e.target.value)}
+              onBlur={() => stale && rationaleEn.trim() && !translating && translate()}
+              rows={3}
+              required
+            />
           </label>
           <div className={styles.nepali}>
             <label>
@@ -157,7 +174,10 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
               <textarea
                 lang="ne"
                 value={rationaleNe}
-                onChange={(e) => setRationaleNe(e.target.value)}
+                onChange={(e) => {
+                  setRationaleNe(e.target.value);
+                  setNepaliOf(rationaleEn); // written by hand: the checker owns it
+                }}
                 rows={3}
                 required
               />
