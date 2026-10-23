@@ -256,6 +256,7 @@ flowchart TD
   - a `true` verdict whose `media_finding` is `elsewhere` or `ai_generated`, or `not_established`: a real event does not vouch for unidentified footage
   - a `false` or `misleading` verdict with no contradicting finding, strong `prior` hit, or watermark: absence of evidence is not a refutation
   - a `contradicted` figure when neither the post nor its claim gives a date
+  - a `true` verdict whose every dated supporting report is from more than 14 days after the post: it may describe a later event ("floods in Nepal" posted on 1 March was confirmed by reports of the August floods)
 
 Notes:
 - **Thresholds are starting values** (`Thresholds` in the router). Model confidence is not calibrated, so they are tuned to give **fast-track precision of 0.95 or more** on the tuning split, even if that sends more cases to a human. A wrong fast-track is the costliest error Hamsa can make.
