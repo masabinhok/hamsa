@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -48,6 +49,7 @@ from app.api.schemas import (
 from app.checkers import signed_in
 from app.config import REPO_ROOT, get_settings
 from app.llm.groq import GroqClient, ReasonerUnavailable
+from app.llm.ollama import OllamaClient
 from app.llm.structured import StructuredOutputError
 from app.pipeline.contracts import Route, VerdictLabel
 from app.pipeline.verdict import Reasoner, translate
@@ -290,10 +292,10 @@ def translate_rationale(request: Request, body: TranslateRequest) -> TranslateRe
     """Checkers write the rationale in English; the public also reads it in Nepali."""
     translator: tuple[Reasoner, str] | None = request.app.state.translator
     if translator is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "translation needs GROQ_API_KEY")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "translation needs a model")
     try:
         nepali, issue = translate(body.english, translator, request.app.state.nepali_checker)
-    except (ReasonerUnavailable, StructuredOutputError) as error:
+    except (ReasonerUnavailable, StructuredOutputError, httpx.HTTPError) as error:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "translation failed; write the Nepali by hand"
         ) from error
@@ -486,7 +488,14 @@ def default_app() -> FastAPI:
     settings = get_settings()
     db = Database(settings.database_url)
     db.create_all()
-    translator = checker = None
+    # Without a Groq key the desk still drafts the Nepali on the local model (ADR 0001), but
+    # unchecked: it garbled disaster words in 5 of 5 sentences and its own check passed all 5
+    # (2026-10-23), so every local translation comes with "read every word".
+    translator: tuple[Reasoner, str] = (
+        OllamaClient(str(settings.ollama_host)),
+        settings.vision_model,
+    )
+    checker: tuple[Reasoner, str] | None = None
     if settings.groq_api_key is not None:
         key = settings.groq_api_key.get_secret_value()
         translator = (GroqClient(key), settings.reasoning_model)
