@@ -18,8 +18,9 @@
   --font-ui: var(--font-mukta), system-ui, sans-serif;
   --font-read: var(--font-martel), Georgia, serif;
 
-  /* Type scale: 1.25 ratio from 16px. */
-  --step--1: 0.8rem;
+  /* Type scale: 1.25 ratio from 16px, except the smallest step: 12.8px Devanagari lost its
+     vowel signs on the desk (Oct 23 feedback), so nothing goes below 14px. */
+  --step--1: 0.875rem;
   --step-0: 1rem;
   --step-1: 1.25rem;
   --step-2: 1.5625rem;
