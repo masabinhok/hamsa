@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -540,3 +540,27 @@ def test_debunked_on_hamsa_needs_the_same_label() -> None:
     fallback = false.model_copy(update={"fallback": True})
     reasons = route(outputs(hits=[debunked], verdict=fallback)).reasons
     assert not any(r.startswith("same footage published") for r in reasons)
+
+
+@pytest.mark.parametrize(
+    ("posted", "route_to"),
+    [(date(2026, 8, 27), Route.FAST_TRACK), (date(2026, 3, 1), Route.HUMAN_REVIEW)],
+)
+def test_a_true_event_must_be_reported_around_the_posts_date(posted: date, route_to: Route) -> None:
+    september = datetime(2026, 9, 3, tzinfo=UTC)
+    news = [
+        passage("p1", "Onlinekhabar", published_at=september),
+        passage("p2", "Nepalnews", published_at=september),
+    ]
+    true = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("no_media"),
+    )
+    decision = route(outputs(passages=news, verdict=true, posted_on=posted))
+    assert decision.route is route_to
+    if route_to is Route.HUMAN_REVIEW:
+        assert decision.reasons == [
+            "every report confirming it is from after 2026-03-15: a later event?"
+        ]
