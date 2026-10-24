@@ -22,4 +22,4 @@ Only keyframes, their fingerprints and a link are kept, not the video. Footage b
 ## Consequences
 - Checked end to end on 2026-10-14: a repost of footage nobody had seen went to a human; after it was published as false with the original's link, a second repost (mirrored, cropped, captioned) matched both lessons (310 and 59 ORB inliers) and was judged false at 0.90 to 0.93.
 - The first report of new footage still needs a human; every later repost does not.
-- A verdict later reopened and corrected leaves its lesson in the archive; removing it is manual for now.
+- A verdict reopened and published again replaces what the case taught, label and wording both (2026-10-24: `archive.forget` runs before each case is taught). A lesson still pending when a case is reopened is dropped.
