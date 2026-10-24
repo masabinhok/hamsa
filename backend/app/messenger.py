@@ -63,7 +63,10 @@ class Messenger:
         if response.is_error:
             raise ChatError(response.status_code, response.text[:200])
 
-    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None:
+    def unsend(self, chat_id: int, message_id: int) -> None:
+        """Meta's Send API cannot delete a Page's message; a correction is sent as new."""
+
+    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> int | None:
         for start in range(0, len(text), MAX_TEXT):
             response = self.http.post(
                 f"{GRAPH}/me/messages",
@@ -76,6 +79,7 @@ class Messenger:
             )
             if response.is_error:
                 raise ChatError(response.status_code, response.text[:200])
+        return None
 
 
 def submissions(payload: dict[str, Any]) -> list[Submission]:
