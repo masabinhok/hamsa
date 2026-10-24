@@ -143,6 +143,15 @@ class Checker(Base):
     active: Mapped[bool] = mapped_column(default=True)
 
 
+class SentVerdict(Base):
+    """The verdict message a submitter was sent, so a corrected verdict can replace it."""
+
+    __tablename__ = "sent_verdicts"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), primary_key=True)
+    message_id: Mapped[int | None]  # None where the platform cannot delete it (Messenger)
+
+
 class TelegramReport(Base):
     """The chat a submission came from, so the bot can send the verdict back. Messenger
     chats live here too (chat_id is the page-scoped user id); the case's channel says

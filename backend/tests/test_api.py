@@ -174,9 +174,23 @@ def test_checker_can_override_the_label(client: TestClient, db: Database) -> Non
     client.post(
         "/desk/cases/c1/decision",
         headers=AUTH,
-        json={"action": "publish", "checker": "sita", "label": "misleading"},
+        json={
+            "action": "publish",
+            "checker": "sita",
+            "label": "misleading",
+            "rationale_en": "Real footage, wrong year.",
+            "rationale_ne": "साँचो भिडियो, फरक वर्ष।",
+        },
     )
     assert client.get("/cases/c1").json()["verdict"]["label"] == "misleading"
+
+
+def test_a_new_label_needs_its_own_reasoning(client: TestClient, db: Database) -> None:
+    add_routed_case(db, "c1")  # the draft says false
+    body = {"action": "publish", "checker": "sita", "label": "true"}
+    response = client.post("/desk/cases/c1/decision", headers=AUTH, json=body)
+    assert response.status_code == 422
+    assert client.get("/cases/c1").json()["verdict"] is None
 
 
 def test_deciding_twice_conflicts(client: TestClient, db: Database) -> None:

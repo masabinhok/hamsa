@@ -98,3 +98,20 @@ def test_an_eval_post_never_teaches_the_archive(tmp_path: Path, index: ArchiveIn
 
 def test_an_unverifiable_verdict_teaches_nothing(tmp_path: Path, index: ArchiveIndex) -> None:
     assert teach(lesson(tmp_path, VerdictLabel.UNVERIFIABLE), index, fake_embed, never_fetch) == []
+
+
+def test_a_corrected_verdict_replaces_what_the_case_taught(
+    tmp_path: Path, index: ArchiveIndex
+) -> None:
+    teach(lesson(tmp_path, VerdictLabel.TRUE), index, fake_embed, never_fetch)
+    corrected = lesson(tmp_path, VerdictLabel.FALSE)
+    assert teach(corrected, index, fake_embed, never_fetch) == ["case-c1-0"]
+    [row] = archive.manifest_rows()
+    assert row.label is ArchiveLabel.PRIOR
+    assert row.original_context.startswith("Debunked on Hamsa as false")
+    [hit] = [
+        h
+        for h in match_media([Frame(0, 0.0, tiktok_style(textured(3)))], index, fake_embed).hits
+        if is_strong_match(h)
+    ]
+    assert (hit.archive_id, hit.archive_label) == ("case-c1-0", ArchiveLabel.PRIOR)

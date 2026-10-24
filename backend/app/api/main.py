@@ -336,6 +336,14 @@ def decide(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "say who decided")
     case = get_case(session, case_id)
     draft = _draft(case) or {}
+    relabelled = body.label is not None and body.label.value != draft.get("label")
+    if body.action is Action.PUBLISH and relabelled and draft and not body.rationale_en:
+        # The draft's reasoning argues for its own label; published beside another one, the
+        # verdict contradicts itself (two cases went out "true" explaining why they were false).
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "the label differs from the draft: write the reasoning that goes with it",
+        )
     try:
         if body.action is Action.PUBLISH:
             label = body.label or (VerdictLabel(draft["label"]) if "label" in draft else None)
