@@ -199,7 +199,8 @@ def main() -> int:
     app = create_app(
         settings, db, messenger, verify.get_secret_value(), app_secret.get_secret_value()
     )
-    uvicorn.run(app, host="0.0.0.0", port=8001)  # noqa: S104
+    # Loopback only: the tunnel runs on this machine, and host networking ignores compose ports.
+    uvicorn.run(app, host="127.0.0.1", port=8001)
     return 0
 
 
