@@ -60,7 +60,7 @@ def keyframes_from_video(path: Path, max_frames: int = MAX_FRAMES) -> list[Frame
     if not samples:
         raise ValueError(f"no decodable video frames in {path.name}")
 
-    thumbs = [_thumbnail(image) for _, image in samples]
+    thumbs = [thumb for _, thumb, _ in samples]
     shown = [i for i, thumb in enumerate(thumbs) if thumb.std() >= BLANK_STD]
     shown = shown or list(range(len(samples)))
     change = [0.0] + [float(np.abs(b - a).mean()) for a, b in pairwise(thumbs)]
@@ -77,13 +77,18 @@ def keyframes_from_video(path: Path, max_frames: int = MAX_FRAMES) -> list[Frame
         chosen += padding[: max_frames - len(chosen)]
 
     return [
-        Frame(index=n, timestamp_s=samples[i][0], image=_fit(samples[i][1]))
+        Frame(index=n, timestamp_s=samples[i][0], image=samples[i][2])
         for n, i in enumerate(sorted(chosen))
     ]
 
 
-def _sample(path: Path) -> list[tuple[float, Image.Image]]:
-    samples: list[tuple[float, Image.Image]] = []
+def _sample(path: Path) -> list[tuple[float, np.ndarray, Image.Image]]:
+    """Each sample's time, 32x32 thumbnail and frame fitted to 720p.
+
+    Full-size frames are never kept: 600 of them from a 4K upload would need ~10 GB.
+    shortcut: still holds up to 600 fitted frames (~1.6 GB at 720p); decode twice if that bites.
+    """
+    samples: list[tuple[float, np.ndarray, Image.Image]] = []
     next_time = 0.0
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
@@ -92,7 +97,7 @@ def _sample(path: Path) -> list[tuple[float, Image.Image]]:
             if frame.pts is None or frame.time < next_time:
                 continue
             image = Image.fromarray(frame.to_ndarray(format="rgb24"))
-            samples.append((round(frame.time, 2), image))
+            samples.append((round(frame.time, 2), _thumbnail(image), _fit(image)))
             next_time = frame.time + 1 / SAMPLES_PER_SECOND
             if len(samples) >= MAX_SAMPLES:
                 break

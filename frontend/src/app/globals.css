@@ -11,7 +11,7 @@
 
   /* Verdict colours carry meaning and are used for nothing else. */
   --false: #a3283b;
-  --misleading: #a86a12;
+  --misleading: #8f5a0f; /* 5:1 on --milk; #a86a12 was 4.1:1, under AA for 14px pills */
   --true: #2d7656;
   --unverifiable: #5d6970;
 
@@ -89,7 +89,8 @@ textarea {
 }
 
 :focus-visible {
-  outline: 3px solid var(--glacier);
+  /* --glacier was 1.6:1 on --milk; a focus ring needs 3:1 to be seen */
+  outline: 3px solid var(--ink-soft);
   outline-offset: 2px;
 }
 

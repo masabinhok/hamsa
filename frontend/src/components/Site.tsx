@@ -163,7 +163,12 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
       setError(
         failure instanceof ApiError && failure.status === 429
           ? ["यहाँबाट धेरै पठाइयो। एक मिनेट पर्खनुहोस्।", "Too many submissions from here. Please wait a minute."]
-          : [
+          : failure instanceof ApiError && failure.status === 422
+            ? [
+                "यो लिंक जाँच्न मिल्दैन। Facebook, TikTok, X, YouTube वा Instagram को पोस्टको लिंक पठाउनुहोस्।",
+                `This link cannot be checked: ${failure.message}.`,
+              ]
+            : [
               "पठाउन सकिएन। फेरि प्रयास गर्नुहोस्।",
               `Could not send it: ${failure instanceof Error ? failure.message : "unknown error"}.`,
             ],
@@ -189,7 +194,7 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
 
       <form ref={formRef} className={styles.form} onSubmit={submit}>
         <label className={styles.field}>
-          <Both ne="पोस्टको लिंक" en="Link to the post (Facebook, TikTok, YouTube, X)" />
+          <Both ne="पोस्टको लिंक" en="Link to the post (Facebook, TikTok, YouTube, X, Instagram)" />
           <input name="url" type="url" inputMode="url" placeholder="https://" lang="en" />
         </label>
         <label className={styles.field}>

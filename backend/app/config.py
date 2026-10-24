@@ -12,6 +12,9 @@ class Settings(BaseSettings):
         env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # .env.example ships blank keys ("GROQ_API_KEY="); blank must mean unset, or a fresh
+        # install calls Groq with an empty key and an empty DESK_TOKEN becomes a valid code.
+        env_ignore_empty=True,
     )
 
     # Optional: without it, verdicts fall back to the local vision model (ADR 0001, 0007).
@@ -33,7 +36,8 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'hamsa.db'}"
     media_root: Path = REPO_ROOT / "data" / "cases"
 
-    # Shared secret for the checker desk; the desk API is disabled while unset.
+    # The operator's key to the checker desk; checkers sign in with their own codes
+    # (python -m app.checkers). The desk is disabled only while neither exists.
     desk_token: SecretStr | None = None
     frontend_origin: str = "http://localhost:3000"
     # From @BotFather; `python -m app.telegram` refuses to start without it.

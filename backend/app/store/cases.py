@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel
-from sqlalchemy import Engine, bindparam, create_engine, event, select, text
+from sqlalchemy import Engine, bindparam, create_engine, delete, event, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.pipeline.contracts import (
@@ -62,7 +62,7 @@ def _sqlite_pragmas(connection: Any, _record: Any) -> None:
     # WAL lets the API read while the worker writes; they are separate processes.
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA busy_timeout=30000")  # the bots, api and worker share one file
     cursor.close()
 
 
@@ -218,6 +218,8 @@ def reopen(session: Session, case: Case, checker: str, note: str) -> None:
     if case.status not in (CaseStatus.PUBLISHED, CaseStatus.REJECTED):
         raise DecisionError(f"case is {case.status}, only closed cases can be reopened")
     case.final_label = case.final_rationale_en = case.final_rationale_ne = None
+    # The verdict is withdrawn, so a lesson not yet taught must not teach it.
+    session.execute(delete(Lesson).where(Lesson.case_id == case.id, Lesson.done_at.is_(None)))
     _event(session, case, checker, case.status, CaseStatus.ROUTED, note)
 
 

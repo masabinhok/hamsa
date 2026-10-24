@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.api.main import sniff_suffix
 from app.config import get_settings
-from app.ingest.download import Downloaded, download
+from app.ingest.download import Downloaded, download, is_platform_url
 from app.learn import Verdicted, teach
 from app.pipeline.contracts import (
     Route,
@@ -65,6 +65,9 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         url = case.source_url if not case.media else None
     if url is None:
         return None
+    if not is_platform_url(url):  # intake refuses these; a case stored earlier is not fetched
+        log.warning("case %s: not a platform link, not fetched", case_id)
+        return None
     with tempfile.TemporaryDirectory() as tmp:
         try:
             post = fetch(url, Path(tmp))
@@ -102,6 +105,16 @@ def process_next(
     if claimed is None:
         return None
     job_id, case_id = claimed
+    with db.session.begin() as session:
+        job, case = session.get_one(Job, job_id), session.get_one(Case, case_id)
+        if job.attempts > MAX_ATTEMPTS:
+            # Only a job whose worker died mid-run gets here: a case that kills the worker
+            # must reach a human instead of being retaken every lease period.
+            reason = f"worker stopped on this case {job.attempts - 1} times"
+            decision = RouteDecision(route=Route.HUMAN_REVIEW, reasons=[reason])
+            complete_job(session, job_id, case, StageOutputs(), decision, {})
+            log.error("case %s: %s, sent to a checker", case_id, reason)
+            return case_id
     # A forwarded link is known before it is downloaded again.
     with db.session() as session:
         original = same_post(session, session.get_one(Case, case_id))
@@ -212,9 +225,15 @@ def main() -> int:
     log.info("worker ready")
     try:
         while True:
-            idle = process_next(db, runner, settings.media_root, fetch) is None
-            if idle and not learn_next(db, settings.media_root, settings.frontend_origin, lesson):
-                time.sleep(POLL_S)
+            try:
+                idle = process_next(db, runner, settings.media_root, fetch) is None
+                if idle and not learn_next(
+                    db, settings.media_root, settings.frontend_origin, lesson
+                ):
+                    time.sleep(POLL_S)
+            except Exception:  # a database lock or a bad fetch must not stop every later case
+                log.exception("worker step failed")
+                time.sleep(POLL_S * 5)
     except KeyboardInterrupt:
         return 0
 

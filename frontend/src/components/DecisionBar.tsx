@@ -223,7 +223,20 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
           {busy ? "Publishing…" : label ? `Publish as ${labelName[label].en.toLowerCase()}` : "Publish"}
         </button>
         {draft && (
-          <button type="button" className={styles.link} onClick={() => setEditing(!editing)}>
+          <button
+            type="button"
+            className={styles.link}
+            onClick={() => {
+              if (editing) {
+                // Back to the draft as it was, so no edit is published beside an old Nepali.
+                setRationaleEn(draft.rationale_en);
+                setRationaleNe(draft.rationale_ne);
+                setNepaliOf(draft.rationale_en);
+                setTranslation(null);
+              }
+              setEditing(!editing);
+            }}
+          >
             {editing ? "Use the draft wording" : "Edit wording"}
           </button>
         )}

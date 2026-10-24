@@ -8,6 +8,7 @@ so the desk needs no public address.
 import logging
 import sys
 import time
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,7 @@ from app.api.main import (
     sniff_suffix,
 )
 from app.config import get_settings
+from app.ingest.download import is_platform_url
 from app.store.cases import (
     Database,
     StoredMedia,
@@ -63,6 +65,21 @@ HELP = (
 ABOUT = "विपद्‌बारे शंकास्पद पोस्ट पठाउनुहोस्। Send a doubtful disaster post; fact-checkers reply."
 # Every command answers with HELP; listing one gives readers the menu button.
 COMMANDS = [{"command": "help", "description": "कसरी पठाउने · How to send a post"}]
+NOT_A_POST = (
+    "Facebook, TikTok, X, YouTube वा Instagram को पोस्टको लिंक, वा त्यसको फोटो वा भिडियो पठाउनुहोस्।\n"
+    "Hamsa checks posts from Facebook, TikTok, X, YouTube and Instagram: send the post's link, "
+    "or its photo or video."
+)
+# A message made only of these words is a greeting, not a claim: it gets HELP and no case.
+# A word list, not a length cut-off, so a short real claim ("रसुवामा ५०० मरे") still counts.
+SMALL_TALK = frozenset(
+    (  # noqa: SIM905 - a word list reads better as one string
+        "hi hii hello helo hey hy yo there how are r you u doing what whats s up sup good morning "
+        "afternoon evening night thanks thank thx ty ok okay k cool nice test testing bye namaste "
+        "namaskar cha xa kasto sanchai dhanyabad dhanyawad hajur dai didi bro "
+        "नमस्ते नमस्कार धन्यवाद के छ कस्तो सन्चै हजुर"
+    ).split()
+)
 NOTHING = (
     "पोस्टको लिंक, लेखिएको कुरा, फोटो वा भिडियो पठाउनुहोस्।\n"
     "Send the post's link, its text, or its photo or video."
@@ -249,6 +266,15 @@ def submissions(updates: Iterable[dict[str, Any]]) -> list[Submission]:
     return found
 
 
+def _small_talk(text: str) -> bool:
+    """A greeting, thanks or emoji only: nothing to check."""
+    kept = "".join(" " if unicodedata.category(c)[0] in "PS" else c for c in text.casefold())
+    words = kept.split()
+    return len(words) <= 8 and all(
+        w in SMALL_TALK or not any(c.isalpha() for c in w) for w in words
+    )
+
+
 def _reply(telegram: Chat, post: Submission, text: str) -> None:
     try:
         telegram.send(post.chat_id, text, reply_to=post.message_id)
@@ -269,6 +295,14 @@ def receive(
     created: list[str] = []
     for post in posts:
         if post.command is not None:
+            _reply(telegram, post, HELP)
+            continue
+        if post.url and not is_platform_url(post.url):
+            if not post.files:
+                _reply(telegram, post, NOT_A_POST)
+                continue
+            post.url = None  # the photo or video is the post; the stray link is not
+        if post.text and not post.url and not post.files and _small_talk(post.text):
             _reply(telegram, post, HELP)
             continue
         if not (post.text or post.url or post.files):
@@ -450,19 +484,24 @@ def main() -> int:
                 log.warning("getUpdates failed (%s); retrying", type(error).__name__)
                 time.sleep(5)
                 updates = []
-            if updates:
-                offset = int(updates[-1]["update_id"]) + 1
-                created = receive(
-                    db,
-                    telegram,
-                    submissions(updates),
-                    settings.media_root,
-                    settings.frontend_origin,
-                    limiter,
-                )
-                if created:
-                    log.info("new cases: %s", ", ".join(created))
-            notify(db, telegram, settings.frontend_origin)
+            try:
+                if updates:
+                    # Advanced first, so an update that keeps failing is skipped, not retried.
+                    offset = int(updates[-1]["update_id"]) + 1
+                    created = receive(
+                        db,
+                        telegram,
+                        submissions(updates),
+                        settings.media_root,
+                        settings.frontend_origin,
+                        limiter,
+                    )
+                    if created:
+                        log.info("new cases: %s", ", ".join(created))
+                notify(db, telegram, settings.frontend_origin)
+            except Exception:  # a locked database or a bad file must not silence the bot
+                log.exception("poll failed")
+                time.sleep(5)
     except KeyboardInterrupt:
         return 0
 

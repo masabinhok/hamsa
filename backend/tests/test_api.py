@@ -82,9 +82,11 @@ def test_submit_text_and_image(client: TestClient, tmp_path: Path) -> None:
         ({}, None, 422),
         ({"text": "   "}, None, 422),
         ({"text": "x", "url": "not a url"}, None, 422),
+        ({"url": "https://github.com/a/b"}, None, 422),
+        ({"url": "http://127.0.0.1:6333/collections"}, None, 422),
         ({}, [("files", ("x.jpg", b"<script>", "image/jpeg"))], 415),
     ],
-    ids=["empty", "blank-text", "bad-url", "fake-image"],
+    ids=["empty", "blank-text", "bad-url", "other-site", "internal-address", "fake-image"],
 )
 def test_bad_submissions_are_rejected(
     client: TestClient,
@@ -375,12 +377,47 @@ def test_uploads_and_readings_are_public_only_once_published(
     assert client.get(f"/cases/{case_id}/media/..%2F..%2Fhamsa.db").status_code == 404
 
 
-def test_a_merged_report_points_to_the_report_it_joined(client: TestClient, db: Database) -> None:
+def test_a_merged_report_points_to_the_report_it_joined_only_once_decided(
+    client: TestClient, db: Database
+) -> None:
     add_routed_case(db, "c1")
     add_routed_case(db, "c2")
     with db.session.begin() as session:
         session.get_one(Case, "c2").merged_into = "c1"
+    assert client.get("/cases/c2").json()["merged_into"] is None  # c1 is someone else's, open
+    client.post(
+        "/desk/cases/c1/decision", headers=AUTH, json={"action": "publish", "checker": "sita"}
+    )
     assert client.get("/cases/c2").json()["merged_into"] == "c1"
+
+
+def test_a_published_photo_is_served_without_its_location(client: TestClient, db: Database) -> None:
+    exif = Image.Exif()
+    exif[0x0112] = 6  # orientation: rotate 90 degrees to display
+    exif[0x8825] = {2: (27.0, 42.0, 0.0), 4: (85.0, 19.0, 0.0)}  # GPS latitude, longitude
+    buffer = io.BytesIO()
+    photo(1).resize((120, 80)).save(buffer, "JPEG", exif=exif)
+    files = [("files", ("a.jpg", buffer.getvalue(), "image/jpeg"))]
+    case_id = client.post("/cases", files=files).json()["id"]
+    [name] = client.get(f"/desk/cases/{case_id}", headers=AUTH).json()["media"]
+    result = routed_result()
+    with db.session.begin() as session:
+        claimed = claim_job(session)
+        assert claimed is not None
+        case = session.get_one(Case, case_id)
+        complete_job(session, claimed[0], case, result.outputs, result.decision, result.seconds)
+    client.post(
+        f"/desk/cases/{case_id}/decision",
+        headers=AUTH,
+        json={"action": "publish", "checker": "sita"},
+    )
+
+    public = Image.open(io.BytesIO(client.get(f"/cases/{case_id}/media/{name}").content))
+    assert len(public.getexif()) == 0
+    assert "xmp" not in public.info
+    assert public.size == (80, 120)  # turned upright before the metadata went
+    desk = client.get(f"/desk/cases/{case_id}/media/{name}", headers=AUTH)
+    assert Image.open(io.BytesIO(desk.content)).getexif().get_ifd(0x8825)  # checkers keep it
 
 
 def test_wrong_codes_are_throttled_per_client(db: Database, tmp_path: Path) -> None:

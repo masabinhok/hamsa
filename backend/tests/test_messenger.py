@@ -11,7 +11,7 @@ from app.config import Settings
 from app.messenger import Messenger, create_app, signed, submissions
 from app.store.cases import Database
 from app.store.models import Case, Channel, TelegramReport
-from app.telegram import ABOUT, Submission, notify
+from app.telegram import ABOUT, HELP, Submission, notify
 from tests.stored import add_routed_case, database
 from tests.test_telegram import ORIGIN, jpeg, publish_case
 
@@ -124,3 +124,17 @@ def test_the_page_greets_readers_with_the_bots_about_text() -> None:
     graph = FakeGraph()
     graph.client().greet(ABOUT)
     assert graph.sent == [{"greeting": [{"locale": "default", "text": ABOUT}]}]
+
+
+def test_a_greeting_on_messenger_gets_help_and_no_case(tmp_path: Path) -> None:
+    db, graph = database(tmp_path), FakeGraph()
+    body = json.dumps(payload(event(text="Hello! How are you?"))).encode()
+    sign = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+    assert (
+        webhook(db, tmp_path, graph)
+        .post("/webhook", content=body, headers={"X-Hub-Signature-256": sign})
+        .is_success
+    )
+    with db.session() as session:
+        assert session.query(Case).all() == []
+    assert [m["message"]["text"] for m in graph.sent] == [HELP]

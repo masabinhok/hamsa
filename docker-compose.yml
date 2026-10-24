@@ -14,8 +14,6 @@ x-backend: &backend
   volumes:
     - ./data:/app/data
     - huggingface:/root/.cache/huggingface
-    # The operator's browser login, read-only, for fetching pasted links (ADR 0010).
-    - ${HOME}/.mozilla:/root/.mozilla:ro
   depends_on:
     - qdrant
   restart: unless-stopped
@@ -36,6 +34,12 @@ services:
   worker:
     <<: *backend
     command: python -m app.worker
+    # Only the worker fetches links, so only it gets the operator's browser login, read-only
+    # (ADR 0010). A merge key replaces lists, hence the shared mounts repeated here.
+    volumes:
+      - ./data:/app/data
+      - huggingface:/root/.cache/huggingface
+      - ${HOME}/.mozilla:/root/.mozilla:ro
 
   corpus:
     <<: *backend
@@ -48,12 +52,11 @@ services:
     profiles: [telegram]
 
   # Optional: docker compose --profile messenger up -d (needs the three MESSENGER_* values).
-  # Meta reaches the webhook through a tunnel to 127.0.0.1:8001 (docs/install.md).
+  # Meta reaches the webhook through a tunnel to 127.0.0.1:8001 (docs/install.md); with host
+  # networking the app itself listens on loopback, so no port mapping is needed.
   messenger:
     <<: *backend
     command: python -m app.messenger
-    ports:
-      - "127.0.0.1:8001:8001"
     profiles: [messenger]
 
   # Web search for evidence the trusted corpus lacks; Hamsa skips it while SEARXNG_URL is unset.

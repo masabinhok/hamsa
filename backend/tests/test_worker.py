@@ -206,6 +206,22 @@ def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_
     assert seen == [[]]
 
 
+def test_a_stored_link_to_another_site_is_never_fetched(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, "बाढी", "http://127.0.0.1:6333/collections", [])
+    fetched: list[str] = []
+
+    def fetch(url: str, folder: Path) -> Downloaded:
+        fetched.append(url)
+        return Downloaded(files=[], caption=None)
+
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        return routed_result()
+
+    assert process_next(db, runner, tmp_path, fetch) == "c1"
+    assert fetched == []
+
+
 def test_download_retries_without_the_browser_login(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -423,3 +439,44 @@ def test_a_decided_file_with_new_words_is_checked_again(db: Database, tmp_path: 
     with db.session() as session:
         assert session.get_one(Case, "c2").status is CaseStatus.ROUTED
         assert session.get_one(Case, "c3").merged_into == "c1"  # the file alone: same post
+
+
+def test_a_case_that_keeps_killing_the_worker_goes_to_a_checker(
+    db: Database, tmp_path: Path
+) -> None:
+    add_case(db, "c1")
+    with db.session.begin() as session:  # three earlier workers died mid-run, lease long gone
+        job = session.get_one(Job, 1)
+        job.state, job.attempts = JobState.RUNNING, MAX_ATTEMPTS
+        job.lease_until = job.not_before.replace(year=2000)
+    ran: list[str | None] = []
+
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        ran.append(text)
+        return routed_result()
+
+    assert process_next(db, runner, tmp_path) == "c1"
+    assert ran == []
+    with db.session() as session:
+        case = session.get_one(Case, "c1")
+        assert case.route == Route.HUMAN_REVIEW.value
+        assert case.decision is not None
+        assert case.decision["reasons"] == [f"worker stopped on this case {MAX_ATTEMPTS} times"]
+    assert process_next(db, runner, tmp_path) is None  # not retaken
+
+
+def test_a_reopened_verdict_is_not_taught(db: Database) -> None:
+    from app.store.cases import reopen
+    from app.worker import learn_next
+
+    add_routed_case(db, "c1")
+    with db.session.begin() as session:
+        case = session.get_one(Case, "c1")
+        publish(session, case, "sita", VerdictLabel.FALSE, "en", "ne", None, None)
+    with db.session.begin() as session:
+        reopen(session, session.get_one(Case, "c1"), "sita", "new evidence")
+
+    def teach(verdicted: object) -> list[str]:
+        raise AssertionError("a withdrawn verdict was taught")
+
+    assert not learn_next(db, Path("/media"), "http://site", teach)
