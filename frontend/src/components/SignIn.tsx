@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, desk, site } from "@/lib/api";
+import { Mark } from "@/components/Mark";
 import { signIn } from "@/lib/session";
 import styles from "./SignIn.module.css";
 
@@ -55,7 +56,7 @@ export function SignIn() {
     <main className={styles.page}>
       <section className={styles.intro} aria-labelledby="desk-title">
         <p className={styles.brand}>
-          Hamsa <span lang="ne">हंस</span>
+          <Mark size={40} /> Hamsa <span lang="ne">हंस</span>
         </p>
         <h1 id="desk-title" className={styles.title}>
           The checker desk

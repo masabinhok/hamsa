@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Mark } from "@/components/Mark";
 import { Queue } from "@/components/Queue";
 import { SignIn } from "@/components/SignIn";
 import { QueueProvider, useQueue } from "@/lib/queue";
@@ -17,7 +18,9 @@ export default function DeskLayout({ children }: LayoutProps<"/desk">) {
         <div className={styles.desk}>
           <aside className={styles.side}>
             <header className={styles.masthead}>
-              <span className={styles.brand}>Hamsa</span>
+              <span className={styles.brand}>
+                <Mark size={24} /> Hamsa
+              </span>
               <span className={styles.who}>
                 <Link href="/" className={styles.signOut}>
                   Public site
