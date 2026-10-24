@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Mark } from "@/components/Mark";
 import { Queue } from "@/components/Queue";
 import { SignIn } from "@/components/SignIn";
@@ -10,6 +11,7 @@ import styles from "./desk.module.css";
 
 export default function DeskLayout({ children }: LayoutProps<"/desk">) {
   const checker = useStoredChecker();
+  const atOverview = usePathname() === "/desk";
   if (!checker) return <SignIn />;
 
   return (
@@ -18,18 +20,21 @@ export default function DeskLayout({ children }: LayoutProps<"/desk">) {
         <div className={styles.desk}>
           <aside className={styles.side}>
             <header className={styles.masthead}>
-              <span className={styles.brand}>
-                <Mark size={24} /> Hamsa
-              </span>
-              <span className={styles.who}>
-                <Link href="/" className={styles.signOut}>
-                  Public site
+              <Link href="/desk" className={styles.brand} aria-label="Hamsa desk overview">
+                <Mark size={24} /> Hamsa <span className={styles.brandDesk}>desk</span>
+              </Link>
+              <p className={styles.who}>
+                Signed in as <strong>{checker.name}</strong>
+              </p>
+              <nav className={styles.deskNav} aria-label="Desk">
+                <Link href="/desk" aria-current={atOverview ? "page" : undefined}>
+                  Overview
                 </Link>
-                {checker.name}
+                <Link href="/">Public site</Link>
                 <button type="button" className={styles.signOut} onClick={signOut}>
                   Sign out
                 </button>
-              </span>
+              </nav>
             </header>
             <Queue />
           </aside>
