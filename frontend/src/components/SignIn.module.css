@@ -35,6 +35,9 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-read);
   font-size: var(--step-1);
   font-weight: 600;

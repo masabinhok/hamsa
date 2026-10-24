@@ -26,7 +26,7 @@
   order: -2; /* stays on top when an open report moves first on phones */
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center; /* the swan mark has no text baseline */
   justify-content: space-between;
   gap: var(--space-2) var(--space-5);
   padding: var(--space-3) var(--space-4);
@@ -105,6 +105,9 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
@@ -353,10 +356,10 @@
   color: var(--silt);
 }
 
-/* Home: the four steps of a check, side by side where there is room. */
+/* Home: the four steps of a check, two by two so none is left alone on a row. */
 .journey {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   margin: 0;
   padding: 0;

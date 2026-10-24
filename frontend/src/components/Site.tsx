@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, site, type CaseStatus, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
+import { Mark } from "@/components/Mark";
 import { labelName } from "@/lib/words";
 import styles from "../app/site.module.css";
 
@@ -82,7 +83,7 @@ export function Masthead() {
   return (
     <header className={styles.masthead}>
       <Link href="/" className={styles.brand}>
-        Hamsa <span className={styles.brandNe}>हंस</span>
+        <Mark /> Hamsa <span className={styles.brandNe}>हंस</span>
       </Link>
       <nav className={styles.nav} aria-label="Hamsa">
         <Link href="/">पोस्ट पठाउनुहोस् · Send a post</Link>
