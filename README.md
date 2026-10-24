@@ -69,19 +69,20 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Backend | Python, FastAPI | Open source |
 | Frontend | Next.js | Open source |
 
-**No proprietary AI APIs are used anywhere in the pipeline.**
+**No proprietary AI APIs are used anywhere in the pipeline.** The Frogtoberfest organisers confirmed that a hosted open-weight model (gpt-oss on Groq) is allowed. Without a Groq key, every call runs locally.
 
 ## AI usage disclosure
 
-*(Filled in with exact file and function names as the build progresses.)*
+Every model call in Hamsa, and the code that acts on its output.
 
 | AI step | Model | Where the output is consumed |
 |---|---|---|
 | Claim extraction | Qwen3-VL-8B (Ollama, local) | `extract_claim` in `backend/app/pipeline/extract.py` → `Claim` JSON: its text and places become retrieval queries and the dedup key; its `watermarks` and `checkable` fields drive rules in `backend/app/router/route.py` |
-| Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media |
-| Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing) | `retrieve` in `backend/app/pipeline/retrieve.py`, and `WebSearch._passage` in `backend/app/pipeline/web_search.py` for web pages (cosine decides whether a page is evidence) → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
+| Media match | SigLIP 2 (`google/siglip2-base-patch16-224`) | `match_media` in `backend/app/pipeline/media_match.py` → cosine scores, with pHash, decide `is_strong_match` in `backend/app/router/route.py`, which can fast-track a case as recycled media; `teach` in `backend/app/learn.py` embeds the footage of every published verdict into the archive the next post is matched against |
+| Duplicate claims | bge-m3 (Ollama, CPU) | `claim_duplicate` in `backend/app/pipeline/duplicate.py` → cosine against open cases about the same place merges a new post into the case already on the desk |
+| Evidence retrieval | bge-m3 (Ollama, CPU per case; GPU for offline indexing in `backend/app/corpus/__main__.py`) | `retrieve` in `backend/app/pipeline/retrieve.py`, and `WebSearch._passage` in `backend/app/pipeline/web_search.py` for web pages (cosine decides whether a page is evidence) → the passages the verdict model may cite; cited passages decide the "independent sources" and "conflict" rules in `backend/app/router/route.py` |
 | Verdict | gpt-oss-120b (Groq); fallback Qwen3-VL-8B (local) | `judge` in `backend/app/pipeline/verdict.py` → label, confidence, and cited passages with stances decide the fast-track, conflict, and human-review rules in `backend/app/router/route.py`; the Nepali rationale is the published explanation |
-| Fact-check relevance gate | gpt-oss-20b (Groq); offline: Qwen3-VL-8B (local) | `covering` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.covers` decides which fact-checks, searched or from the corpus, enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py` |
+| Fact-check relevance gate | gpt-oss-20b (Groq); offline: Qwen3-VL-8B (local) | `covering` in `backend/app/pipeline/claim_reviews.py` → `SameClaim.covers` decides which fact-checks, searched or from the corpus, enter the evidence; a kept one that agrees with the verdict can fast-track the case in `backend/app/router/route.py`; its recall is measured by `backend/app/eval/review_recall.py` |
 | Rationale translation | gpt-oss-120b (Groq); offline: Qwen3-VL-8B (local), always marked "read every word" | `translate` in `backend/app/pipeline/verdict.py`, served by `POST /desk/translate` in `backend/app/api/main.py` → the Nepali rationale a checker publishes after editing the English; checked by the row below before it is shown |
 | Nepali rationale check | gpt-oss-20b (Groq); offline: Qwen3-VL-8B (local) for verdicts | `check_nepali` in `backend/app/pipeline/verdict.py` → `Verdict.nepali_issue`, and the `issue` the desk shows after a translation; any issue (or no check) is a conflict in `backend/app/router/route.py`, so the case goes to a checker instead of being fast-tracked |
 
