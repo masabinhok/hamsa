@@ -12,29 +12,59 @@
   overflow-y: auto;
 }
 
+/* Stays at the top of the sidebar while the queue scrolls beneath it. */
 .masthead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-4);
   border-bottom: 1px solid var(--rule);
+  background: var(--milk);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  justify-self: start;
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
+  white-space: nowrap;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brandDesk {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  color: var(--silt);
 }
 
 .who {
-  display: flex;
-  gap: var(--space-3);
   font-size: var(--step--1);
   color: var(--silt);
+}
+
+.who strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.deskNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+}
+
+.deskNav a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .signOut {
@@ -91,7 +121,7 @@
   .side {
     position: static;
     height: auto;
-    max-height: 40dvh;
+    max-height: 50dvh;
     border-right: 0;
     border-bottom: 1px solid var(--rule);
   }
