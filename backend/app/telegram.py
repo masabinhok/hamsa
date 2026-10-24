@@ -484,19 +484,24 @@ def main() -> int:
                 log.warning("getUpdates failed (%s); retrying", type(error).__name__)
                 time.sleep(5)
                 updates = []
-            if updates:
-                offset = int(updates[-1]["update_id"]) + 1
-                created = receive(
-                    db,
-                    telegram,
-                    submissions(updates),
-                    settings.media_root,
-                    settings.frontend_origin,
-                    limiter,
-                )
-                if created:
-                    log.info("new cases: %s", ", ".join(created))
-            notify(db, telegram, settings.frontend_origin)
+            try:
+                if updates:
+                    # Advanced first, so an update that keeps failing is skipped, not retried.
+                    offset = int(updates[-1]["update_id"]) + 1
+                    created = receive(
+                        db,
+                        telegram,
+                        submissions(updates),
+                        settings.media_root,
+                        settings.frontend_origin,
+                        limiter,
+                    )
+                    if created:
+                        log.info("new cases: %s", ", ".join(created))
+                notify(db, telegram, settings.frontend_origin)
+            except Exception:  # a locked database or a bad file must not silence the bot
+                log.exception("poll failed")
+                time.sleep(5)
     except KeyboardInterrupt:
         return 0
 
