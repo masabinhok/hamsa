@@ -69,7 +69,7 @@ Each stage returns a Pydantic model. Model outputs are requested with a JSON sch
 **In:** `Submission` with `channel` (`web` or `telegram`), optional `text`, optional `url`, and zero or more uploaded files.
 **Out:** `NormalisedCase` with the text, the source URL, and a list of `MediaAsset`s (`sha256`, `kind`, `path`, and for video the `keyframes`).
 
-- **URLs:** only allowed platform hosts (Facebook, TikTok, X, YouTube, Instagram) are fetched, with `yt-dlp`. This prevents the server being used to fetch arbitrary internal addresses.
+- **URLs:** only links to the platforms (Facebook, TikTok, X, YouTube, Instagram, and their subdomains) are accepted and fetched, with `yt-dlp` (`is_platform_url` in `backend/app/ingest/download.py`). The API, the bots and the worker each check it, so a reader cannot make the server fetch other sites or internal addresses. The original a checker pastes on the desk is not limited, since originals often live on news sites.
 - **Uploads:** at most 100 MB each. The file type is sniffed from its bytes, not its name or extension.
 - **Images:** decoded and re-encoded, which strips EXIF metadata including location.
 - **Video:** keyframes are taken at scene changes using PyAV, capped at 6 frames per video and scaled to at most 720p.
@@ -298,7 +298,7 @@ Implemented in `backend/app/store/`.
 
 **Submitter.** Pastes a link, text, or media into the web form, then gets a case id and a status page. When the case is published, the status page shows the verdict in Nepali and English with sources.
 
-**Telegram submitter.** Forwards a post, or sends its link, photo or video, to the bot (`backend/app/telegram.py`, long polling, so no public address is needed). The bot writes the case like the API does (`Channel.TELEGRAM`) and replies with the report link. A `telegram_reports` row remembers the chat; each poll the bot sends news it has not sent yet: the published verdict with sources, a rejection, a merge into an earlier report (and later that report's verdict), or a request for the file when the link could not be opened. The photo or video the sender then sends joins that same report, which is checked again, instead of starting a new one beside it (as the web report page's upload does). Only direct messages count, so a group cannot flood the desk. Files over 20 MB are refused by the Bot API, so the bot asks for the link instead.
+**Telegram submitter.** Forwards a post, or sends its link, photo or video, to the bot (`backend/app/telegram.py`, long polling, so no public address is needed). The bot writes the case like the API does (`Channel.TELEGRAM`) and replies with the report link. A `telegram_reports` row remembers the chat; each poll the bot sends news it has not sent yet: the published verdict with sources, a rejection, a merge into an earlier report (and later that report's verdict), or a request for the file when the link could not be opened. The photo or video the sender then sends joins that same report, which is checked again, instead of starting a new one beside it (as the web report page's upload does). Only direct messages count, so a group cannot flood the desk. A greeting, thanks or emoji-only message gets the help text and no case, and a link to any other site gets a note on what to send. Files over 20 MB are refused by the Bot API, so the bot asks for the link instead.
 
 **Messenger submitter.** The same flow over a Facebook Page (`backend/app/messenger.py`): Meta posts each message to a webhook, which refuses any body not signed with the app secret, and the bot reuses the Telegram intake and news (`receive`, `notify`), with the case's channel saying which platform answers. A shared post arrives as a link, a photo or video as a file. Messenger allows replies only within 24 hours of the reader's last message.
 
@@ -378,7 +378,7 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 - **Desk access:** every `/desk` endpoint needs `Authorization: Bearer $DESK_TOKEN`, compared in constant time. The desk is disabled (503) while no token is set. Decisions record the checker's name in the audit trail.
 - **Public endpoints never show model drafts.** A submitter sees the case status, and the verdict only after a checker publishes it.
 - **Submissions:** at most 10 per minute per client IP (in-memory sliding window; one API process). At most 4 files of 100 MB each, typed by their bytes (JPEG, PNG, WebP, MP4/MOV, WebM/MKV), never by name or declared type, and stored under a content-hash name. Media is served back only by a stored name, which also blocks path traversal.
-- **Links:** stored as given and validated as URLs. Fetching them (planned, with `yt-dlp`) will be limited to allowed platform hosts, so the server cannot be used to fetch internal addresses.
+- **Links:** validated as URLs and accepted only from the platforms (`is_platform_url`); the API answers 422 and the bots explain what to send otherwise. The worker checks again before fetching, so a link stored earlier cannot reach an internal address.
 - **Stored data:** EXIF is dropped when frames are decoded. No submitter contact details are collected.
 - **Secrets:** come only from the environment (`app/config.py`). `.env` is gitignored, and the pre-commit hooks check for private keys.
 

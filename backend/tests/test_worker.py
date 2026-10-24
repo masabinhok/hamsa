@@ -206,6 +206,22 @@ def test_a_link_that_cannot_be_fetched_is_checked_on_its_text(db: Database, tmp_
     assert seen == [[]]
 
 
+def test_a_stored_link_to_another_site_is_never_fetched(db: Database, tmp_path: Path) -> None:
+    with db.session.begin() as session:
+        create_case(session, "c1", Channel.WEB, "बाढी", "http://127.0.0.1:6333/collections", [])
+    fetched: list[str] = []
+
+    def fetch(url: str, folder: Path) -> Downloaded:
+        fetched.append(url)
+        return Downloaded(files=[], caption=None)
+
+    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+        return routed_result()
+
+    assert process_next(db, runner, tmp_path, fetch) == "c1"
+    assert fetched == []
+
+
 def test_download_retries_without_the_browser_login(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
