@@ -56,6 +56,7 @@ from app.llm.ollama import OllamaClient
 from app.llm.structured import StructuredOutputError
 from app.pipeline.contracts import Route, VerdictLabel
 from app.pipeline.verdict import Reasoner, translate
+from app.router.route import is_strong_match
 from app.store.cases import (
     Database,
     DecisionError,
@@ -458,7 +459,14 @@ def published_verdict(case: Case) -> PublishedVerdict | None:
                     )
         if outputs.claim:
             claim = PublicClaim.model_validate(outputs.claim, from_attributes=True)
-        for hit in outputs.media_match.hits if outputs.media_match else []:
+        # Only strong matches, as the verdict saw: a weak candidate is a similar-looking scene,
+        # and a reader would take it as "this footage appeared there before".
+        strong = (
+            [h for h in outputs.media_match.hits if is_strong_match(h)]
+            if outputs.media_match
+            else []
+        )
+        for hit in strong:
             footage.setdefault(
                 hit.archive_id, EarlierFootage.model_validate(hit, from_attributes=True)
             )
