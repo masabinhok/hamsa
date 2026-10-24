@@ -212,7 +212,7 @@ function Status({ id }: { id: string }) {
       <header className={styles.articleHead}>
         <Tag label={verdict.label} />
         <h1 className={styles.headline}>{claim?.claim ?? current.text ?? verdict.rationale_ne}</h1>
-        {claim?.claim_en && (
+        {claim?.claim_en && claim.claim_en.trim() !== claim.claim.trim() && (
           <p className={styles.standfirst} lang="en">
             {claim.claim_en}
           </p>

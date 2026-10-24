@@ -93,6 +93,15 @@
   }
 }
 
+/* With nothing in the side rail (no reports sent from this browser), the content takes the row. */
+.columns:has(> .rail:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rail:empty {
+  display: none;
+}
+
 .rail {
   display: grid;
   gap: var(--space-6);
