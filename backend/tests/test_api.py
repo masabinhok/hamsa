@@ -364,7 +364,8 @@ def test_uploads_and_readings_are_public_only_once_published(
     [name] = client.get(f"/desk/cases/{case_id}", headers=AUTH).json()["media"]
     assert client.get(f"/cases/{case_id}/media/{name}").status_code == 404  # not reviewed yet
 
-    result = routed_result(outputs(hits=[hit(), hit(frame_index=3)]))
+    weak = hit(archive_id="other-river", phash_distance=30, original_context="Another river")
+    result = routed_result(outputs(hits=[hit(), hit(frame_index=3), weak]))
     with db.session.begin() as session:
         claimed = claim_job(session)
         assert claimed is not None
@@ -377,7 +378,7 @@ def test_uploads_and_readings_are_public_only_once_published(
     public = client.get(f"/cases/{case_id}").json()
     assert public["verdict"]["claim"]["claim_en"] == "Melamchi bazaar was swept away"
     assert [f["original_context"] for f in public["verdict"]["earlier_footage"]] == [
-        "2023 Himachal Pradesh floods, Kullu"  # two frames of one archive item, shown once
+        "2023 Himachal Pradesh floods, Kullu"  # two frames of one item once; the weak hit never
     ]
     assert public["verdict"]["media"] == [name]
     assert [step["status"] for step in public["timeline"]] == [
