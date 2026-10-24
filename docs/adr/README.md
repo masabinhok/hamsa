@@ -17,5 +17,8 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0011](0011-archive-learns-from-verdicts.md) | The archive learns from verdicts, not from bulk downloads or web search | Accepted |
 | [0012](0012-search-fact-checks-published-abroad.md) | Search fact-checks published abroad through ClaimReview | Accepted |
 | [0013](0013-web-evidence-through-self-hosted-searxng.md) | Search the web for evidence about the event through self-hosted SearXNG | Accepted |
+| [0014](0014-archive-is-a-memory-not-a-library.md) | The archive is a memory of checked footage, not a library that must be complete | Accepted |
+| [0015](0015-disaster-scope-and-what-widening-it-takes.md) | Stay scoped to disasters; widening is a corpus and prompt change | Accepted |
+| [0016](0016-scale-the-archive-by-sharing-fingerprints.md) | Scale the archive by sharing fingerprints between desks, not storing media | Accepted (direction) |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.

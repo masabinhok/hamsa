@@ -138,6 +138,8 @@ Each archive item carries a label:
 
 A hit on `prior` footage is evidence that the post is recycled. A hit on `verified_genuine` footage supports the post being authentic, until that footage is old: genuine clips of one disaster are the most likely to be reposted as the next one (section 3.7).
 
+The archive holds these fingerprints and labels, never the videos: 325 keyframes took 32 MB on 2026-10-24. It grows from every published verdict and every original a checker finds ([ADR 0011](adr/0011-archive-learns-from-verdicts.md)). Beyond one newsroom it grows by desks sharing fingerprints and labels, not media ([ADR 0016](adr/0016-scale-the-archive-by-sharing-fingerprints.md)).
+
 ### 3.4 Duplicate check
 
 **The same post** (`same_post` in `backend/app/store/cases.py`, checked by the worker before any model runs, so a repeat costs no model time) is a repeat of an earlier report, open *or decided*, if any of these match:
