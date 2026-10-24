@@ -4,6 +4,7 @@ Public: submit a post, check its status, read published verdicts.
 Desk (checker token): the queue, full case detail with model drafts, and decisions.
 """
 
+import io
 import secrets
 import time
 from collections import defaultdict, deque
@@ -25,7 +26,8 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from PIL import Image, ImageOps
 from pydantic import HttpUrl, SecretStr, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -72,6 +74,7 @@ from app.store.cases import (
 )
 from app.store.models import Case, CaseEvent, CaseStatus, Channel, Checker
 
+PUBLIC_IMAGE_FORMATS = {".jpg": "JPEG", ".png": "PNG", ".webp": "WEBP"}
 SUBMISSIONS_PER_MINUTE = 10  # per client IP; a fact-check desk is not a bulk API
 # Checker codes are unguessable, but the operator picks DESK_TOKEN and may pick a weak one.
 FAILED_SIGN_INS_PER_MINUTE = 10
@@ -238,13 +241,25 @@ def public_case(session: DbSession, case_id: str) -> PublicCase:
 
 
 @public.get("/cases/{case_id}/media/{name}")
-def public_media(request: Request, session: DbSession, case_id: str, name: str) -> FileResponse:
+def public_media(request: Request, session: DbSession, case_id: str, name: str) -> Response:
     """A post's upload, once a checker has published: unreviewed uploads could be anything."""
     case = get_case(session, case_id)
     if case.status is not CaseStatus.PUBLISHED or name not in {m.filename for m in case.media}:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such media")
     media_root: Path = request.app.state.media_root
-    return FileResponse(media_root / case_id / name)
+    path = media_root / case_id / name
+    if path.suffix not in PUBLIC_IMAGE_FORMATS:
+        return FileResponse(path)
+    # A reader's photo can carry their home's GPS position; the public copy drops all
+    # metadata, while the desk keeps the original as evidence.
+    with Image.open(path) as opened:
+        image = ImageOps.exif_transpose(opened)
+        image.info = {}
+        buffer = io.BytesIO()
+        image.save(buffer, format=PUBLIC_IMAGE_FORMATS[path.suffix], quality=95)
+    return Response(
+        buffer.getvalue(), media_type=f"image/{PUBLIC_IMAGE_FORMATS[path.suffix].lower()}"
+    )
 
 
 @public.get("/verdicts")
@@ -410,7 +425,9 @@ def public_view(session: Session, case: Case) -> PublicCase:
         source_url=case.source_url,
         media_count=len(case.media),
         timeline=[PublicStep(at=e.at, status=e.to_status) for e in case.events],
-        merged_into=case.merged_into,
+        # Only once there is a verdict: the earlier report's id would open someone else's
+        # unpublished report and its upload slot.
+        merged_into=case.merged_into if verdict else None,
         verdict=verdict,
         needs_media=needs_media(case),
     )
