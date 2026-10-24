@@ -2,6 +2,7 @@
 :root {
   --milk: #f6f8f7;
   --milk-deep: #eaf0ee;
+  --paper: #ffffff; /* cards and the article column sit on paper, the page on milk */
   --ink: #16323b;
   --ink-soft: #3d5862;
   --silt: #5a6d73; /* 5:1 on --milk; small grey text must stay readable (WCAG AA) */
@@ -110,5 +111,14 @@ textarea {
     --press: 1;
     --dur-short: 150ms;
     --dur-medium: 150ms;
+  }
+}
+
+/* Page-change crossfades (React ViewTransition) follow the same rule as every other motion. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
