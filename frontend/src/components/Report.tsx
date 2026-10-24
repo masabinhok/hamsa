@@ -158,9 +158,9 @@ function Status({ id }: { id: string }) {
 
       {verdict && (
         <section className={styles.verdict} aria-label="Verdict · निर्णय">
-          <p className={styles.verdictLabel} data-label={verdict.label}>
+          <h1 className={styles.verdictLabel} data-label={verdict.label}>
             {labelName[verdict.label].ne} <span lang="en">{labelName[verdict.label].en}</span>
-          </p>
+          </h1>
           <p className={styles.rationale}>{verdict.rationale_ne}</p>
           <p className={styles.rationaleEn} lang="en">
             {verdict.rationale_en}

@@ -30,6 +30,11 @@
   color: var(--milk);
 }
 
+/* On the dark panel the page's dark focus ring would vanish. */
+.intro :focus-visible {
+  outline-color: var(--glacier);
+}
+
 .intro > * {
   max-width: 34rem;
 }
