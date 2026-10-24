@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -41,3 +43,12 @@ def test_malformed_url_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OLLAMA_HOST", "not a url")
     with pytest.raises(ValidationError):
         load()
+
+
+def test_blank_values_from_env_example_mean_unset(tmp_path: Path) -> None:
+    env = tmp_path / ".env"
+    env.write_text("GROQ_API_KEY=\nDESK_TOKEN=\nSEARXNG_URL=\n", encoding="utf-8")
+    settings = Settings(_env_file=env)  # pyright: ignore[reportCallIssue]
+    assert settings.groq_api_key is None
+    assert settings.desk_token is None
+    assert settings.searxng_url is None
