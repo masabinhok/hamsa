@@ -119,6 +119,20 @@ Submit a link with `curl -F "url=https://www.facebook.com/reel/..." localhost:80
 
 ## Evaluation
 
+**Fast-track precision 8/8 on the tuning set, and 0 false posts cleared. The rest arrive on the desk drafted, with cited evidence.** Hamsa is deliberately conservative: it publishes nothing by itself, and 80% of posts go to a checker. The product is the evidence pack and the draft, not an automatic verdict.
+
+Fresh run on 2026-10-24, on the code being submitted:
+
+| Split | Items | Fast-track precision | Recycled media (precision, recall) | Refuted-or-not | Exact label | To a human | Latency p50 / p95 |
+|---|---|---|---|---|---|---|---|
+| Tuning (h001–h040) | 40 | 8/8 | 9/9, 9/13 | 31/40 | 21/40 | 31/40 | 46 s / 75 s |
+| Held out (h041–h044) | 4 | none fast-tracked | –, 0/2 | 2/4 | 2/4 | 4/4 | 34 s / 44 s |
+
+- **Exact label** is low partly by design: fact-checkers disagree on false versus misleading for the same pattern (Nepal Factcheck rates foreign footage passed off as Nepal "misleading", AFP rates it "false"). Refuted-or-not is what decides triage.
+- **One unsafe route:** h030, a genuine Onlinekhabar clip of an APF inspector quoting a rescue ("we heard cries for help"), was dismissed as "not a checkable claim", so a true post never reached a checker. No false or misleading post was cleared.
+- **The held-out split is small** (4 items). Read it with the live split below, which is real posts sent to Hamsa.
+- **Time saved was not measured** with a professional checker. Latency is what Hamsa takes before a checker opens the case: under a minute for most posts, with the original footage, sources and a Nepali/English draft already attached.
+
 A labelled set of debunked and genuine posts from Nepal's 2026 disasters (`data/eval/`), labelled with each fact-checker's published rating. We report recycled-media precision and recall, verdict agreement (exact, and refuted-or-not), fast-track precision, the share sent to a human, and latency. A second run hides every fact-check from retrieval, to measure posts nobody has debunked yet.
 
 ```bash
@@ -126,6 +140,7 @@ cd backend
 uv run python -m app.eval.score                    # tuning split, h001-h040
 uv run python -m app.eval.score --no-fact-checks   # as if no fact-check existed
 uv run python -m app.eval.score --split test       # held-out numbers for this README
+uv run python -m app.eval.live                     # real posts sent to Hamsa (data/eval/live/)
 ```
 
 Stage outputs are cached in `data/eval/runs/`, so rescoring after a threshold change reruns only the router.
