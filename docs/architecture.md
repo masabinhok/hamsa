@@ -71,7 +71,7 @@ Each stage returns a Pydantic model. Model outputs are requested with a JSON sch
 
 - **URLs:** only links to the platforms (Facebook, TikTok, X, YouTube, Instagram, and their subdomains) are accepted and fetched, with `yt-dlp` (`is_platform_url` in `backend/app/ingest/download.py`). The API, the bots and the worker each check it, so a reader cannot make the server fetch other sites or internal addresses. The original a checker pastes on the desk is not limited, since originals often live on news sites.
 - **Uploads:** at most 100 MB each. The file type is sniffed from its bytes, not its name or extension.
-- **Images:** decoded and re-encoded, which strips EXIF metadata including location.
+- **Images:** the uploaded file is stored as sent, so the desk keeps its metadata as evidence. The frames the models see are decoded without EXIF, and the public copy of a published image is re-encoded upright with no metadata, location included (`public_media` in `backend/app/api/main.py`). Video files keep their container metadata.
 - **Video:** keyframes are taken at scene changes using PyAV, capped at 6 frames per video and scaled to at most 720p.
   - *Measured:* 6 frames cost about 3,200 prompt tokens and take about 4 seconds on the target GPU.
 - **Storage:** media goes in `data/cases/<case_id>/`, which is gitignored.
@@ -375,11 +375,12 @@ Scored on `data/eval/items.csv` by `app/eval/`. Tuning uses `h001` to `h040`, an
 
 ## 9. Security and privacy
 
-- **Desk access:** every `/desk` endpoint needs `Authorization: Bearer $DESK_TOKEN`, compared in constant time. The desk is disabled (503) while no token is set. Decisions record the checker's name in the audit trail.
+- **Desk access:** every `/desk` endpoint needs `Authorization: Bearer <code>`: a checker's own access code (`python -m app.checkers`, stored as a hash), or the operator's optional `DESK_TOKEN`, compared in constant time. The desk is disabled (503) only while neither exists. Wrong codes are rate-limited per client address. Decisions record the checker's name in the audit trail.
 - **Public endpoints never show model drafts.** A submitter sees the case status, and the verdict only after a checker publishes it.
 - **Submissions:** at most 10 per minute per client IP (in-memory sliding window; one API process). At most 4 files of 100 MB each, typed by their bytes (JPEG, PNG, WebP, MP4/MOV, WebM/MKV), never by name or declared type, and stored under a content-hash name. Media is served back only by a stored name, which also blocks path traversal.
 - **Links:** validated as URLs and accepted only from the platforms (`is_platform_url`); the API answers 422 and the bots explain what to send otherwise. The worker checks again before fetching, so a link stored earlier cannot reach an internal address.
-- **Stored data:** EXIF is dropped when frames are decoded. No submitter contact details are collected.
+- **Stored data:** cases, their files and their audit trail are kept until an operator deletes them; there is no automatic retention limit. For Telegram and Messenger reports the chat or sender id is kept, so the verdict can be sent back. No other contact details are collected. Published images are served without metadata (above).
+- **Running:** the backend containers run as root with host networking (so `localhost` reaches Ollama). Only the worker mounts the operator's browser profile, read-only; use a profile logged in only to the platforms Hamsa fetches from. Keep `.env` at mode 600 and use a long random `DESK_TOKEN`.
 - **Secrets:** come only from the environment (`app/config.py`). `.env` is gitignored, and the pre-commit hooks check for private keys.
 
 ## 10. Code map

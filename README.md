@@ -93,15 +93,15 @@ Every model call in Hamsa, and the code that acts on its output.
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker, [Ollama](https://ollama.com), an NVIDIA GPU with 8 GB VRAM (recommended), and a free [Groq](https://console.groq.com) API key (optional: without it, every model call runs on the local Qwen3-VL and Hamsa works offline; every verdict then goes to a checker, since the fast-track rules were calibrated on gpt-oss).
 
 ```bash
-docker compose up -d                          # Qdrant
+cp .env.example .env && chmod 600 .env       # set SEARXNG_SECRET first (openssl rand -hex 32); GROQ_API_KEY, FETCH_BROWSER optional
+docker compose up -d qdrant searxng           # the vector store and web search only
 ollama pull qwen3-vl:8b-instruct && ollama pull bge-m3
-cp .env.example .env                          # set GROQ_API_KEY (and FETCH_BROWSER)
 
 cd backend && uv sync
 uv run python -m app.corpus fetch             # trusted articles, ~1 min
 uv run python -m app.corpus index             # embed into Qdrant, ~15 min on the GPU
 uv run python -m app.corpus watch             # keep it current: new articles every 15 min
-uv run python -m app.archive                  # media archive from data/archive and eval originals
+uv run python -m app.archive                  # rebuilds the media archive index (see below)
 
 uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
 
@@ -112,6 +112,8 @@ uv run python -m app.messenger                            # optional: the Messen
 
 cd ../frontend && npm install && npm run dev              # checker desk on :3000
 ```
+
+`app.archive` rebuilds the archive index from the clips in `data/archive/media/` and the eval originals. Those videos are other people's posts, so they are not in the repository: on a fresh clone the archive starts empty and grows from published verdicts (ADR 0011, 0014), or add clips with `python -m app.archive add <url>`. A rebuild re-reads every clip in `data/archive/manifest.csv`, learned ones included, so on a running desk it is safe, only slow.
 
 Give each fact-checker an account: `uv run python -m app.checkers add "Sita Sharma"` prints her access code once (only its hash is stored); `list` and `remove` manage the rest. The desk asks only for the code, and the server records the checker's name on every decision. An optional `DESK_TOKEN` is the operator's key: it opens the desk too, but asks who is deciding. It talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` is set in `frontend/.env.local`.
 
