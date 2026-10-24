@@ -1,107 +1,33 @@
-/* Public site: send a post (or browse reports) on the left, read on the right. */
+/* Public site, set like a Nepali news site: a front page of checked posts, and each verdict
+   read as an article. Sizes follow Onlinekhabar's reading system (measured 2026-10-24: article
+   body 22px / 1.8, card headlines 19-21px / 1.3), kept inside Hamsa's own palette and the 14px
+   floor in globals.css. Devanagari headlines get 1.25+ line-height so matras never touch. */
 .site {
-  /* Devanagari needs a larger size than Latin to read comfortably. */
+  min-height: 100dvh;
   font-size: 1.125rem;
-  line-height: 1.65;
-}
-
-.sendPane,
-.listPane,
-.statusPane {
-  display: grid;
-  /* minmax(0, …) lets wide children (file inputs, long words) shrink instead of widening the page. */
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: var(--space-6);
-  padding: var(--space-6) var(--space-4) var(--space-7);
-}
-
-.sendPane,
-.listPane {
-  background: var(--milk-deep);
-  border-bottom: 1px solid var(--rule);
-}
-
-.masthead {
-  order: -2; /* stays on top when an open report moves first on phones */
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center; /* the swan mark has no text baseline */
-  justify-content: space-between;
-  gap: var(--space-2) var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--rule);
+  line-height: 1.7;
   background: var(--milk);
 }
 
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-5);
-  font-size: var(--step--1);
-}
+/* ---------- top bar ---------- */
 
-.nav a {
-  color: var(--ink);
-  text-underline-offset: 0.2em;
-}
-
-.nav .deskLink {
-  color: var(--silt);
-}
-
-/* On phones an open report comes first: someone following a shared link wants its status. */
-.site {
-  display: grid;
-}
-
-.site[data-open] .statusPane {
-  order: -1;
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--paper);
   border-bottom: 1px solid var(--rule);
 }
 
-/* Wide screens: two columns, each scrolling on its own. */
-@media (min-width: 60rem) {
-  .site {
-    display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(0, 5fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    height: 100dvh;
-  }
-
-  .masthead {
-    grid-column: 1 / -1;
-    padding-inline: var(--space-6);
-  }
-
-  .sendPane,
-  .listPane,
-  .statusPane {
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: var(--space-7) var(--space-6);
-  }
-
-  .submitBar {
-    margin-inline: calc(-1 * var(--space-6));
-    padding-inline: var(--space-6);
-  }
-
-  .site[data-open] .statusPane {
-    order: 0;
-    border-bottom: 0;
-  }
-
-  .sendPane,
-  .listPane {
-    border-bottom: 0;
-    border-right: 1px solid var(--rule);
-  }
-}
-
-.header {
-  display: grid;
-  gap: var(--space-3);
+.mastheadInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-5);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
 }
 
 .brand {
@@ -111,6 +37,7 @@
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
+  white-space: nowrap;
   color: var(--ink);
   text-decoration: none;
 }
@@ -120,85 +47,213 @@
   font-weight: 400;
 }
 
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+
+.nav a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.nav a:hover {
+  text-decoration: underline;
+}
+
+.nav .deskLink {
+  color: var(--silt);
+  font-weight: 400;
+}
+
+/* ---------- page frame ---------- */
+
+.page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+@media (min-width: 60rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    align-items: start;
+  }
+}
+
+.rail {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+}
+
+@media (min-width: 60rem) {
+  .rail {
+    position: sticky;
+    top: 5rem;
+  }
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+/* Section titles, like a news front page: a word, a rule, and a "सबै" link if any. */
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--step-2);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.panel .heading {
+  font-size: var(--step-1);
+  border-bottom-width: 1px;
+}
+
+.en {
+  display: block;
+  font-size: max(0.8em, var(--step--1));
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--silt);
+}
+
+.heading .en {
+  display: inline;
+}
+
+.quiet {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.empty {
+  color: var(--silt);
+}
+
+/* ---------- send band ---------- */
+
+.send {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  background: var(--ink);
+  color: var(--milk);
+  border-radius: 10px;
+}
+
+@media (min-width: 48rem) {
+  .send {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    align-items: start;
+    gap: var(--space-6);
+    padding: var(--space-6);
+  }
+}
+
+.send .en,
+.send .quiet {
+  color: var(--glacier);
+}
+
 .title {
-  font-family: var(--font-read);
+  font-family: var(--font-ui);
   font-size: var(--step-3);
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 
 .lede {
-  color: var(--ink-soft);
+  margin-top: var(--space-2);
+  font-size: var(--step-0);
+  line-height: 1.7;
 }
 
 .form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .field {
   display: grid;
-  gap: var(--space-2);
-  font-weight: 600;
+  gap: var(--space-1);
+  font-size: var(--step-0);
+  font-weight: 500;
 }
 
-.field textarea,
-.field input {
-  font-weight: 400;
-  padding: var(--space-3);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
-  color: var(--ink);
-}
-
+.field input,
 .field textarea {
-  resize: vertical;
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid #7f9599;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 400;
 }
 
 .field input[type="file"] {
-  padding: var(--space-4) var(--space-3);
-  border-style: dashed;
-  cursor: pointer;
+  padding: var(--space-2);
+}
+
+.hint {
+  font-size: var(--step--1);
 }
 
 .more summary {
   cursor: pointer;
-  font-weight: 600;
-  padding-block: var(--space-2);
+  font-size: var(--step--1);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .more[open] summary {
   margin-bottom: var(--space-3);
 }
 
-.hint {
-  color: var(--ink-soft);
-  font-size: var(--step--1);
-}
-
-/* The send button stays in reach while the left column scrolls. */
-.submitBar {
-  position: sticky;
-  bottom: 0;
-  margin: 0 calc(-1 * var(--space-4));
-  padding: var(--space-3) var(--space-4);
-  background: var(--milk-deep);
-}
-
 .submit {
-  width: 100%;
+  min-height: 48px;
   padding: var(--space-3) var(--space-5);
   border: 0;
   border-radius: 6px;
-  background: var(--ink);
-  color: var(--milk);
+  background: var(--glacier);
+  color: var(--ink);
+  font-size: var(--step-0);
   font-weight: 600;
   cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out);
 }
 
-.submit:hover:not(:disabled) {
-  background: var(--ink-soft);
+.submit:active {
+  transform: scale(var(--press));
 }
 
 .submit:disabled {
@@ -206,132 +261,67 @@
   cursor: progress;
 }
 
-.error {
-  color: var(--false);
-}
-
-.heading {
-  font-size: var(--step-0);
-  font-weight: 600;
-}
-
-/* English sits under the Nepali, smaller and quieter, never competing with it. */
-.en {
-  display: block;
-  font-family: var(--font-ui);
-  font-size: 0.85em;
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--silt);
-}
-
-.empty {
-  padding: var(--space-5);
-  border: 1px dashed var(--rule);
-  border-radius: 6px;
-  color: var(--ink-soft);
-}
-
-.quiet {
-  color: var(--silt);
-  font-size: var(--step--1);
-}
-
-/* The report being followed. */
-.status {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-6);
-}
-
-.reportHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.copy {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
-  color: var(--ink);
-  font-size: var(--step--1);
-  cursor: pointer;
-}
-
-.copy:hover {
-  border-color: var(--ink-soft);
-}
-
-.verdict {
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
-  border-radius: 8px;
-  background: white;
-  border: 1px solid var(--rule);
-}
-
-.section {
-  display: grid;
-  gap: var(--space-3);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--rule);
-}
-
-/* The post as the submitter sent it: quoted, not restyled as Hamsa's own words. */
-.post {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-left: 3px solid var(--glacier);
-  background: white;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.link {
-  overflow-wrap: anywhere;
-  color: var(--ink-soft);
-  font-size: var(--step--1);
-}
-
-.media {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: var(--space-3);
-}
-
-.media img,
-.media video {
-  width: 100%;
-  max-height: 28rem;
-  object-fit: contain;
-  border-radius: 6px;
+/* On the dark send band the button is light; inside an article (the file upload) it is dark. */
+.article .submit {
   background: var(--ink);
+  color: var(--milk);
 }
 
-.card {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
+.error {
+  padding: var(--space-3);
+  border-left: 4px solid var(--false);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 0 6px 6px 0;
 }
 
 .notice {
   padding: var(--space-3) var(--space-4);
-  border-radius: 6px;
   background: var(--glacier-wash);
+  border-radius: 6px;
 }
 
-/* A status in words, for reports with no verdict yet. */
+/* ---------- verdict tag: the "category" above every headline ---------- */
+
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  width: fit-content;
+  padding: 0.1em 0.6em;
+  border-radius: 4px;
+  background: var(--verdict, var(--unverifiable));
+  color: var(--paper);
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.tag span {
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.site [data-label="false"] {
+  --verdict: var(--false);
+}
+
+.site [data-label="misleading"] {
+  --verdict: var(--misleading);
+}
+
+.site [data-label="true"] {
+  --verdict: var(--true);
+}
+
+.site [data-label="unverifiable"] {
+  --verdict: var(--unverifiable);
+}
+
 .chip {
-  justify-self: start;
-  padding: 0 var(--space-2);
+  display: inline-block;
+  width: fit-content;
+  padding: 0.1em 0.6em;
   border-radius: 4px;
   background: var(--glacier-wash);
   color: var(--ink);
@@ -344,56 +334,409 @@
 }
 
 .chip[data-size="large"] {
-  padding: var(--space-1) var(--space-3);
-  font-family: var(--font-read);
   font-size: var(--step-1);
+  padding: 0.2em 0.8em;
 }
 
-.stepTime {
-  display: block;
-  font-size: var(--step--1);
-  font-weight: 400;
-  color: var(--silt);
-}
+/* ---------- news cards ---------- */
 
-/* Home: the four steps of a check, two by two so none is left alone on a row. */
-.journey {
+.feed {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.list {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
+  display: grid;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.5rem;
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+@media (min-width: 40rem) {
+  .card {
+    grid-template-columns: 13rem minmax(0, 1fr);
+  }
+
+  .card .thumb {
+    order: -1;
+  }
+}
+
+.cardText {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cardTitle {
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.card:hover .cardTitle {
+  text-decoration: underline;
+  text-decoration-color: var(--verdict, var(--ink));
+  text-underline-offset: 0.2em;
+}
+
+.cardExcerpt {
+  font-size: var(--step-0);
+  line-height: 1.65;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The newest verdict leads the page, bigger, image on top. */
+.lead {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.lead .thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+.lead .cardTitle {
+  font-size: clamp(1.625rem, 4vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.lead .cardExcerpt {
+  -webkit-line-clamp: 3;
+  font-size: 1.125rem;
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--milk-deep);
+}
+
+.thumb img,
+.thumb video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* No picture to show: the swan on the verdict's colour, so the list keeps its rhythm. */
+.thumbEmpty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: color-mix(in srgb, var(--verdict, var(--unverifiable)) 14%, var(--paper));
+}
+
+.thumbEmpty svg,
+.thumbEmpty img {
+  width: 34%;
+  height: auto;
+  opacity: 0.85;
+}
+
+.play {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  padding: 0 0.5em;
+  border-radius: 4px;
+  background: rgb(22 50 59 / 0.75);
+  color: var(--milk);
+  font-size: var(--step--1);
+  line-height: 1.7;
+}
+
+/* Compact rows: the "sent from this browser" panel and the related list under an article. */
+.row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row[aria-current="page"] {
+  font-weight: 600;
+}
+
+.rowTitle {
+  font-size: var(--step-0);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.row:hover .rowTitle {
+  text-decoration: underline;
+}
+
+/* How a check works, as a numbered sidebar list. */
+.journey {
   counter-reset: journey;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
 }
 
 .journey li {
   counter-increment: journey;
-  padding: var(--space-4);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--step-0);
+  line-height: 1.5;
 }
 
 .journey li::before {
   content: counter(journey, devanagari);
-  display: block;
-  font-family: var(--font-read);
-  font-size: var(--step-2);
-  color: var(--glacier);
-  line-height: 1.2;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--milk);
+  font-weight: 600;
 }
 
-/* Progress reads like water moving down a channel: done steps filled, the current one live. */
-.steps {
+/* ---------- the verdict as an article ---------- */
+
+.article {
   display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-5) var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+@media (min-width: 48rem) {
+  .article {
+    padding: var(--space-6) var(--space-7);
+  }
+}
+
+.articleHead {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.headline {
+  font-family: var(--font-read);
+  font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.standfirst {
+  font-size: 1.25rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.byline strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.share {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.figure {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.figure img,
+.figure video {
+  width: 100%;
+  max-height: 32rem;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--ink);
+}
+
+.figure figcaption {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+/* The reading column: Onlinekhabar's 22px / 1.8, narrowed to a comfortable measure. */
+.body {
+  max-width: 40em;
+  font-size: 1.25rem;
+  line-height: 1.8;
+}
+
+@media (min-width: 48rem) {
+  .body {
+    font-size: 1.375rem;
+  }
+}
+
+.body p + p {
+  margin-top: 1.2em;
+}
+
+.box {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40em;
+  padding: var(--space-4);
+  border-left: 4px solid var(--glacier);
+  background: var(--milk);
+  border-radius: 0 8px 8px 0;
+}
+
+.box h2 {
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.boxEn {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40em;
+}
+
+.section > h2 {
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.4;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--rule);
+}
+
+.sources {
+  list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sources li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.sources a {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.stance {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.stance[data-stance="refutes"] {
+  color: var(--false);
+}
+
+.stance[data-stance="supports"] {
+  color: var(--true);
+}
+
+.post {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--rule);
+  font-size: var(--step-0);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.link {
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+
+/* Progress while a report is still being checked. */
+.steps {
   list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
 }
 
 .step {
   position: relative;
+  display: grid;
+  gap: var(--space-1);
   padding: 0 0 var(--space-5) var(--space-6);
   color: var(--silt);
 }
@@ -405,204 +748,62 @@
 .step::before {
   content: "";
   position: absolute;
-  left: 0.3rem;
-  top: 0.9rem;
-  bottom: -0.4rem;
+  left: 0.35rem;
+  top: 0.45em;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid var(--rule);
+  background: var(--paper);
+}
+
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0.71rem;
+  top: 1.4em;
+  bottom: 0;
   width: 2px;
   background: var(--rule);
 }
 
-.step:last-child::before {
-  display: none;
-}
-
-.step::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.45rem;
-  width: 0.75rem;
-  height: 0.75rem;
-  border: 2px solid var(--rule);
-  border-radius: 50%;
-  background: var(--milk);
-}
-
-.step[data-state="done"],
-.step[data-state="now"] {
+.step[data-state="done"] {
   color: var(--ink);
 }
 
 .step[data-state="done"]::before {
-  background: var(--glacier);
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 .step[data-state="done"]::after {
-  border-color: var(--ink);
   background: var(--ink);
 }
 
 .step[data-state="now"] {
+  color: var(--ink);
   font-weight: 600;
 }
 
-.step[data-state="now"]::after {
+.step[data-state="now"]::before {
   border-color: var(--ink);
-  background: var(--glacier);
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.6s var(--ease-in-out) infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .step[data-state="now"]::after {
-    animation: none;
-  }
+.stepTime {
+  font-size: var(--step--1);
+  font-weight: 400;
+  color: var(--silt);
 }
 
 @keyframes pulse {
   50% {
-    box-shadow: 0 0 0 0.35rem var(--glacier-wash);
+    box-shadow: 0 0 0 6px var(--glacier-wash);
   }
 }
 
-.verdictLabel {
-  font-family: var(--font-read);
-  font-size: var(--step-3);
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.verdictLabel span {
-  font-family: var(--font-ui);
-  font-size: var(--step-1);
-  font-weight: 400;
-  color: var(--silt);
-  margin-left: var(--space-2);
-}
-
-.verdictLabel[data-label="false"] {
-  color: var(--false);
-}
-
-.verdictLabel[data-label="misleading"] {
-  color: var(--misleading);
-}
-
-.verdictLabel[data-label="true"] {
-  color: var(--true);
-}
-
-.verdictLabel[data-label="unverifiable"] {
-  color: var(--unverifiable);
-}
-
-.rationale {
-  font-family: var(--font-read);
-  font-size: 1.125rem;
-  line-height: 1.8;
-  max-width: 38em;
-}
-
-.rationaleEn {
-  color: var(--ink-soft);
-  max-width: 42em;
-}
-
-.sources {
-  display: grid;
-  gap: var(--space-2);
-}
-
-/* Lists of other reports. */
-.group {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.item {
-  display: grid;
-  gap: var(--space-1);
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: white;
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.item:hover {
-  border-color: var(--ink-soft);
-}
-
-.item[aria-current="page"] {
-  border-color: var(--ink);
-  box-shadow: inset 3px 0 0 var(--ink);
-}
-
-.list[data-cards] {
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-}
-
-.list[data-cards] .item {
-  height: 100%;
-  align-content: start;
-}
-
-.list[data-compact] .item {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--step--1);
-}
-
-.itemTitle {
-  font-weight: 600;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.itemText {
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Verdict colours carry meaning only (globals.css), here as a tinted tag. */
-.pill {
-  justify-self: start;
-  padding: 0 var(--space-2);
-  border-radius: 4px;
-  font-size: var(--step--1);
-  font-weight: 600;
-  background: color-mix(in srgb, currentColor 10%, white);
-}
-
-.pill span {
-  font-weight: 400;
-}
-
-.pill[data-label="false"] {
-  color: var(--false);
-}
-
-.pill[data-label="misleading"] {
-  color: var(--misleading);
-}
-
-.pill[data-label="true"] {
-  color: var(--true);
-}
-
-.pill[data-label="unverifiable"] {
-  color: var(--unverifiable);
+@media (prefers-reduced-motion: reduce) {
+  .step[data-state="now"]::before {
+    animation: none;
+  }
 }

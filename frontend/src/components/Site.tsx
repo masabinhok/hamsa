@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ApiError, site, type CaseStatus, type PublicCase } from "@/lib/api";
+import { ApiError, site, type CaseStatus, type Label, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
 import { Mark } from "@/components/Mark";
-import { labelName } from "@/lib/words";
+import { labelName, timeAgoNe } from "@/lib/words";
 import styles from "../app/site.module.css";
 
 // Limits enforced by the API (backend/app/api/main.py); checked here to fail early.
@@ -82,15 +82,18 @@ export function useMine(): string[] {
 export function Masthead() {
   return (
     <header className={styles.masthead}>
-      <Link href="/" className={styles.brand}>
-        <Mark /> Hamsa <span className={styles.brandNe}>हंस</span>
-      </Link>
-      <nav className={styles.nav} aria-label="Hamsa">
-        <Link href="/">पोस्ट पठाउनुहोस् · Send a post</Link>
-        <Link href="/desk" lang="en" className={styles.deskLink}>
-          Checker desk
+      <div className={styles.mastheadInner}>
+        <Link href="/" className={styles.brand}>
+          <Mark /> Hamsa <span className={styles.brandNe}>हंस</span>
         </Link>
-      </nav>
+        <nav className={styles.nav} aria-label="Hamsa">
+          <Link href="/#checked">जाँचिएका</Link>
+          <Link href="/#send">पोस्ट पठाउनुहोस्</Link>
+          <Link href="/desk" lang="en" className={styles.deskLink}>
+            Checker desk
+          </Link>
+        </nav>
+      </div>
     </header>
   );
 }
@@ -106,25 +109,31 @@ export function Site() {
   return (
     <div className={styles.site} lang="ne">
       <Masthead />
-      <section className={styles.sendPane} aria-labelledby="send-title">
-        <SendForm onSent={sent} />
-      </section>
-      <section className={styles.statusPane} aria-label="Reports · रिपोर्टहरू">
-        <section className={styles.group} aria-labelledby="after">
-          <h2 id="after" className={styles.heading}>
-            <Both ne="पठाएपछि के हुन्छ" en="What happens after you send" />
-          </h2>
-          <ol className={styles.journey}>
-            {steps.map(([ne, en]) => (
-              <li key={en}>
-                <Both ne={ne} en={en} />
-              </li>
-            ))}
-          </ol>
+      <main className={styles.page}>
+        <section id="send" className={styles.send} aria-labelledby="send-title">
+          <SendForm onSent={sent} />
         </section>
-        <Mine />
-        <Recent />
-      </section>
+        <div className={styles.columns}>
+          <Recent />
+          <aside className={styles.rail} aria-label="तपाईंका रिपोर्ट र जाँच कसरी हुन्छ · Your reports and how a check works">
+            <Mine />
+            <section className={styles.panel} aria-labelledby="after">
+              <h2 id="after" className={styles.heading}>
+                <Both ne="पठाएपछि के हुन्छ" en="What happens after you send" />
+              </h2>
+              <ol className={styles.journey}>
+                {steps.map(([ne, en]) => (
+                  <li key={en}>
+                    <span>
+                      <Both ne={ne} en={en} />
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </aside>
+        </div>
+      </main>
     </div>
   );
 }
@@ -180,7 +189,7 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
 
   return (
     <>
-      <header className={styles.header}>
+      <header>
         <h1 id="send-title" className={styles.title}>
           विपद्‌बारे शंकास्पद पोस्ट देख्नुभयो?
         </h1>
@@ -235,18 +244,55 @@ function SendForm({ onSent }: { onSent: (id: string) => void }) {
   );
 }
 
-function date(iso: string): string {
-  return new Date(iso).toLocaleDateString("ne-NP", { day: "numeric", month: "short" });
+const IMAGE = /\.(jpe?g|png|webp)$/i;
+
+// The post's first published picture or video frame; the swan on the verdict's colour if none.
+export function Thumb({ item, eager = false }: { item: PublicCase; eager?: boolean }) {
+  const media = item.verdict?.media ?? [];
+  const image = media.find((name) => IMAGE.test(name));
+  const video = media.find((name) => !IMAGE.test(name));
+  return (
+    <span className={styles.thumb} data-label={item.verdict?.label}>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element -- the API serves it; nothing to optimise
+        <img src={site.mediaUrl(item.id, image)} alt="" loading={eager ? "eager" : "lazy"} />
+      ) : video ? (
+        <>
+          {/* #t= asks for a frame a second in, so the card shows the scene, not a black start. */}
+          <video src={`${site.mediaUrl(item.id, video)}#t=1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} />
+          <span className={styles.play} aria-hidden="true">
+            ▶ भिडियो
+          </span>
+        </>
+      ) : (
+        <span className={styles.thumbEmpty}>
+          <Mark size={64} />
+        </span>
+      )}
+    </span>
+  );
 }
 
-// `compact` is the side list beside an open report; the home page shows cards.
-export function Mine({ selected = null, compact = false }: { selected?: string | null; compact?: boolean }) {
+export function Tag({ label }: { label: Label }) {
+  return (
+    <span className={styles.tag} data-label={label}>
+      {labelName[label].ne} <span lang="en">{labelName[label].en}</span>
+    </span>
+  );
+}
+
+function headline(item: PublicCase): string {
+  return item.verdict?.claim?.claim ?? item.text ?? item.verdict?.rationale_ne ?? item.id;
+}
+
+// The reader's own reports, newest first, in the side rail.
+export function Mine({ selected = null }: { selected?: string | null }) {
   const ids = useMine();
   const key = ids.join();
   const [found, setFound] = useState<Record<string, PublicCase>>({});
 
   // Keyed on the joined ids: the array itself is new on every render. Re-read on navigation
-  // so the statuses beside an open report stay current.
+  // so the statuses stay current.
   useEffect(() => {
     key
       .split(",")
@@ -261,11 +307,11 @@ export function Mine({ selected = null, compact = false }: { selected?: string |
 
   if (ids.length === 0) return null;
   return (
-    <section className={styles.group} aria-labelledby="mine">
+    <section className={styles.panel} aria-labelledby="mine">
       <h2 id="mine" className={styles.heading}>
         <Both ne="तपाईंले पठाएका" en="Sent from this browser" />
       </h2>
-      <ul className={styles.list} data-compact={compact ? "" : undefined}>
+      <ul className={styles.list}>
         {ids.map((id) => {
           const item = found[id];
           const label = item?.verdict?.label;
@@ -273,23 +319,18 @@ export function Mine({ selected = null, compact = false }: { selected?: string |
             <li key={id}>
               <Link
                 href={`/check/${encodeURIComponent(id)}`}
-                className={styles.item}
+                className={styles.row}
                 aria-current={id === selected ? "page" : undefined}
               >
                 {label ? (
-                  <span className={styles.pill} data-label={label}>
-                    {labelName[label].ne} <span lang="en">{labelName[label].en}</span>
-                  </span>
+                  <Tag label={label} />
                 ) : item ? (
                   <span className={styles.chip}>
                     {shortStatus[item.status][0]} <span lang="en">{shortStatus[item.status][1]}</span>
                   </span>
                 ) : null}
-                <span className={styles.itemText}>{item?.text ?? item?.source_url ?? id}</span>
-                <span className={styles.quiet} lang="en">
-                  {id}
-                  {item && ` · ${date(item.created_at)}`}
-                </span>
+                <span className={styles.rowTitle}>{item ? headline(item) : id}</span>
+                <span className={styles.quiet}>{item ? timeAgoNe(item.created_at) : ""}</span>
               </Link>
             </li>
           );
@@ -299,25 +340,27 @@ export function Mine({ selected = null, compact = false }: { selected?: string |
   );
 }
 
-export function Recent({
-  selected = null,
-  compact = false,
-}: {
-  selected?: string | null;
-  compact?: boolean;
-}) {
+// The front page of checked posts: the newest leads, the rest as news cards. `compact` is the
+// "more checked posts" list under an article.
+export function Recent({ selected = null, compact = false }: { selected?: string | null; compact?: boolean }) {
   const [recent, setRecent] = useState<PublicCase[] | null>(null);
 
   useEffect(() => {
     site.verdicts().then(setRecent, () => setRecent([]));
   }, []);
 
-  const shown = (recent ?? []).filter((item) => item.verdict).slice(0, compact ? 30 : 12);
+  const shown = (recent ?? []).filter((item) => item.verdict && item.id !== selected).slice(0, compact ? 6 : 13);
+  const [lead, ...rest] = compact ? [undefined, ...shown] : shown;
   return (
-    <section className={styles.group} aria-labelledby="recent">
+    <section id="checked" className={styles.feed} aria-labelledby="recent">
       <h2 id="recent" className={styles.heading}>
-        <Both ne="भर्खरै जाँचिएका" en="Recently checked" />
+        {compact ? (
+          <Both ne="अरू जाँचिएका पोस्ट" en="More checked posts" />
+        ) : (
+          <Both ne="भर्खरै जाँचिएका" en="Recently checked" />
+        )}
       </h2>
+      {recent === null && <p className={styles.quiet}>लोड हुँदैछ… Loading…</p>}
       {recent !== null && shown.length === 0 && (
         <p className={styles.empty}>
           <Both
@@ -326,27 +369,27 @@ export function Recent({
           />
         </p>
       )}
-      <ul
-        className={styles.list}
-        data-cards={compact ? undefined : ""}
-        data-compact={compact ? "" : undefined}
-      >
-        {shown.map((item) =>
-          item.verdict ? (
+      {lead?.verdict && (
+        <Link href={`/check/${encodeURIComponent(lead.id)}`} className={styles.lead} data-label={lead.verdict.label}>
+          <Thumb item={lead} eager />
+          <Tag label={lead.verdict.label} />
+          <span className={styles.cardTitle}>{headline(lead)}</span>
+          <span className={styles.cardExcerpt}>{lead.verdict.rationale_ne}</span>
+          <span className={styles.quiet}>{timeAgoNe(lead.verdict.published_at)}</span>
+        </Link>
+      )}
+      <ul className={styles.list}>
+        {rest.map((item) =>
+          item?.verdict ? (
             <li key={item.id}>
-              <Link
-                href={`/check/${encodeURIComponent(item.id)}`}
-                className={styles.item}
-                aria-current={item.id === selected ? "page" : undefined}
-              >
-                <span className={styles.pill} data-label={item.verdict.label}>
-                  {labelName[item.verdict.label].ne} <span lang="en">{labelName[item.verdict.label].en}</span>
+              <Link href={`/check/${encodeURIComponent(item.id)}`} className={styles.card} data-label={item.verdict.label}>
+                <span className={styles.cardText}>
+                  <Tag label={item.verdict.label} />
+                  <span className={styles.cardTitle}>{headline(item)}</span>
+                  {!compact && <span className={styles.cardExcerpt}>{item.verdict.rationale_ne}</span>}
+                  <span className={styles.quiet}>{timeAgoNe(item.verdict.published_at)}</span>
                 </span>
-                <span className={styles.itemTitle}>
-                  {item.verdict.claim?.claim ?? item.text ?? item.verdict.rationale_ne}
-                </span>
-                {!compact && <span className={styles.itemText}>{item.verdict.rationale_ne}</span>}
-                <span className={styles.quiet}>{date(item.verdict.published_at)}</span>
+                <Thumb item={item} />
               </Link>
             </li>
           ) : null,
