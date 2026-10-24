@@ -43,11 +43,12 @@ POLL_S = 25  # long-poll timeout; getUpdates returns at once when a message arri
 MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # the Bot API will not serve larger files to a bot
 log = logging.getLogger("hamsa.telegram")
 
+# The marker repeats the desk's verdict colours, so a verdict reads at a glance in a chat list.
 LABELS = {
-    "false": "गलत · False",
-    "misleading": "भ्रामक · Misleading",
-    "true": "सत्य · True",
-    "unverifiable": "पुष्टि हुन नसकेको · Unverifiable",
+    "false": "🔴 गलत · False",
+    "misleading": "🟠 भ्रामक · Misleading",
+    "true": "🟢 सत्य · True",
+    "unverifiable": "⚪ पुष्टि हुन नसकेको · Unverifiable",
 }
 
 HELP = (
@@ -60,6 +61,8 @@ HELP = (
 )
 # The bot's profile: the description greets a reader before they press Start.
 ABOUT = "विपद्‌बारे शंकास्पद पोस्ट पठाउनुहोस्। Send a doubtful disaster post; fact-checkers reply."
+# Every command answers with HELP; listing one gives readers the menu button.
+COMMANDS = [{"command": "help", "description": "कसरी पठाउने · How to send a post"}]
 NOTHING = (
     "पोस्टको लिंक, लेखिएको कुरा, फोटो वा भिडियो पठाउनुहोस्।\n"
     "Send the post's link, its text, or its photo or video."
@@ -431,6 +434,7 @@ def main() -> int:
     try:
         telegram.call("setMyDescription", description=HELP)
         telegram.call("setMyShortDescription", short_description=ABOUT)
+        telegram.call("setMyCommands", commands=COMMANDS)
     except (ChatError, httpx.HTTPError) as error:  # a stale profile must not stop intake
         log.warning("profile not set: %s", type(error).__name__)
 

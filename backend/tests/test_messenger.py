@@ -11,7 +11,7 @@ from app.config import Settings
 from app.messenger import Messenger, create_app, signed, submissions
 from app.store.cases import Database
 from app.store.models import Case, Channel, TelegramReport
-from app.telegram import Submission, notify
+from app.telegram import ABOUT, Submission, notify
 from tests.stored import add_routed_case, database
 from tests.test_telegram import ORIGIN, jpeg, publish_case
 
@@ -118,3 +118,9 @@ def test_long_verdicts_are_split_to_the_send_apis_limit() -> None:
     graph = FakeGraph()
     graph.client().send(7001, "क" * 4500)
     assert [len(m["message"]["text"]) for m in graph.sent] == [2000, 2000, 500]
+
+
+def test_the_page_greets_readers_with_the_bots_about_text() -> None:
+    graph = FakeGraph()
+    graph.client().greet(ABOUT)
+    assert graph.sent == [{"greeting": [{"locale": "default", "text": ABOUT}]}]

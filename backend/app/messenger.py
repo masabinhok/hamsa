@@ -25,7 +25,7 @@ from app.api.main import MAX_FILE_BYTES, SUBMISSIONS_PER_MINUTE, RateLimiter
 from app.config import Settings, get_settings
 from app.store.cases import Database
 from app.store.models import Channel
-from app.telegram import ChatError, Submission, notify, receive
+from app.telegram import ABOUT, ChatError, Submission, notify, receive
 
 GRAPH = "https://graph.facebook.com/v21.0"
 MAX_TEXT = 2000  # the Send API refuses longer messages
@@ -52,6 +52,16 @@ class Messenger:
                 if len(data) > MAX_FILE_BYTES:
                     raise ChatError(413, "attachment over 100 MB")
         return data
+
+    def greet(self, text: str) -> None:
+        """The greeting a reader sees before writing to the page for the first time."""
+        response = self.http.post(
+            f"{GRAPH}/me/messenger_profile",
+            headers=self._auth,
+            json={"greeting": [{"locale": "default", "text": text}]},
+        )
+        if response.is_error:
+            raise ChatError(response.status_code, response.text[:200])
 
     def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None:
         for start in range(0, len(text), MAX_TEXT):
@@ -179,6 +189,10 @@ def main() -> int:
     db = Database(settings.database_url)
     db.create_all()
     messenger = Messenger(page.get_secret_value())
+    try:
+        messenger.greet(ABOUT)
+    except (ChatError, httpx.HTTPError) as error:  # a stale greeting must not stop intake
+        log.warning("greeting not set: %s", type(error).__name__)
     threading.Thread(
         target=_notify_forever, args=(db, messenger, settings.frontend_origin), daemon=True
     ).start()
