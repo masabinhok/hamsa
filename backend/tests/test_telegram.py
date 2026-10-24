@@ -241,7 +241,7 @@ def test_published_verdict_is_sent_once(db: Database) -> None:
     assert notify(db, api.client(), ORIGIN) == 0
     [sent] = api.sent
     assert sent["chat_id"] == 42
-    assert sent["text"].startswith("गलत · False")
+    assert sent["text"].startswith("🔴 गलत · False")
     assert "पुरानो भिडियो हो।" in sent["text"]
     assert "Nepal Factcheck: https://example.org/p1" in sent["text"]
     assert sent["text"].endswith(f"{ORIGIN}/check/c1")
