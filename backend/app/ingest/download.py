@@ -10,8 +10,22 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
+
+# Readers' links are fetched only from these platforms (and their subdomains: m., vm., www.),
+# so a public intake cannot make the worker fetch arbitrary or internal addresses.
+PLATFORM_HOSTS = (
+    "facebook.com",
+    "fb.watch",
+    "instagram.com",
+    "tiktok.com",
+    "x.com",
+    "twitter.com",
+    "youtube.com",
+    "youtu.be",
+)
 
 # Keyframes are capped at 6 per video, so footage past five minutes adds nothing.
 YTDLP = (
@@ -42,6 +56,15 @@ class Downloaded:
     uploaded: date | None = None
     # The platform's own id ("Youtube:EmM79Xzvbg0"), the same however the link was shared.
     post_id: str | None = None
+
+
+def is_platform_url(url: str) -> bool:
+    """A web link to a post on one of the platforms Hamsa fetches from."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").rstrip(".")
+    return parts.scheme in ("http", "https") and any(
+        host == known or host.endswith(f".{known}") for known in PLATFORM_HOSTS
+    )
 
 
 def download(url: str, folder: Path, browser: str | None = None) -> Downloaded:

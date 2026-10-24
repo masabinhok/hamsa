@@ -82,9 +82,11 @@ def test_submit_text_and_image(client: TestClient, tmp_path: Path) -> None:
         ({}, None, 422),
         ({"text": "   "}, None, 422),
         ({"text": "x", "url": "not a url"}, None, 422),
+        ({"url": "https://github.com/a/b"}, None, 422),
+        ({"url": "http://127.0.0.1:6333/collections"}, None, 422),
         ({}, [("files", ("x.jpg", b"<script>", "image/jpeg"))], 415),
     ],
-    ids=["empty", "blank-text", "bad-url", "fake-image"],
+    ids=["empty", "blank-text", "bad-url", "other-site", "internal-address", "fake-image"],
 )
 def test_bad_submissions_are_rejected(
     client: TestClient,

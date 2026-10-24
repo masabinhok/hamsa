@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.api.main import sniff_suffix
 from app.config import get_settings
-from app.ingest.download import Downloaded, download
+from app.ingest.download import Downloaded, download, is_platform_url
 from app.learn import Verdicted, teach
 from app.pipeline.contracts import (
     Route,
@@ -64,6 +64,9 @@ def attach_link_media(db: Database, case_id: str, media_root: Path, fetch: Fetch
         case = session.get_one(Case, case_id)
         url = case.source_url if not case.media else None
     if url is None:
+        return None
+    if not is_platform_url(url):  # intake refuses these; a case stored earlier is not fetched
+        log.warning("case %s: not a platform link, not fetched", case_id)
         return None
     with tempfile.TemporaryDirectory() as tmp:
         try:

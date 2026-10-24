@@ -14,6 +14,7 @@ from app.store.models import Case, CaseStatus, Channel, TelegramReport
 from app.telegram import (
     HELP,
     MERGED,
+    NOT_A_POST,
     TOO_BIG,
     UNSUPPORTED,
     ChatError,
@@ -173,6 +174,20 @@ def test_photo_becomes_a_telegram_case_and_is_acknowledged(db: Database, tmp_pat
     assert f"{ORIGIN}/check/{case_id}" in ack["text"]
 
 
+def test_short_claims_and_a_photo_with_a_stray_link_still_become_cases(
+    db: Database, tmp_path: Path
+) -> None:
+    api = FakeBotApi(files={"p": jpeg()})
+    posts = [
+        Submission(42, 1, text="रसुवामा ५०० मरे"),
+        Submission(42, 2, text="बाढी", url="https://example.com/news", files=[("p", 10)]),
+    ]
+    short, photo = run_receive(db, api, posts, tmp_path)
+    with db.session() as session:
+        assert session.get_one(Case, short).text == "रसुवामा ५०० मरे"
+        assert session.get_one(Case, photo).source_url is None
+
+
 def test_a_link_alone_is_enough(db: Database, tmp_path: Path) -> None:
     api = FakeBotApi()
     [case_id] = run_receive(
@@ -186,6 +201,12 @@ def test_a_link_alone_is_enough(db: Database, tmp_path: Path) -> None:
     ("post", "files", "reply"),
     [
         (Submission(42, 1, command="/start"), {}, HELP),
+        (Submission(42, 1, text="hi"), {}, HELP),
+        (Submission(42, 1, text="Hello, how are you?"), {}, HELP),
+        (Submission(42, 1, text="नमस्ते 🙏"), {}, HELP),
+        (Submission(42, 1, text="👍"), {}, HELP),
+        (Submission(42, 1, url="https://github.com/a/b"), {}, NOT_A_POST),
+        (Submission(42, 1, text="see", url="http://localhost:6333/collections"), {}, NOT_A_POST),
         (Submission(42, 1, files=[("huge", 25 * 1024 * 1024)]), {}, TOO_BIG),
         (Submission(42, 1, files=[("doc", 5)]), {"doc": b"%PDF-1.7 not media"}, UNSUPPORTED),
     ],

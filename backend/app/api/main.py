@@ -48,6 +48,7 @@ from app.api.schemas import (
 )
 from app.checkers import signed_in
 from app.config import REPO_ROOT, get_settings
+from app.ingest.download import is_platform_url
 from app.llm.groq import GroqClient, ReasonerUnavailable
 from app.llm.ollama import OllamaClient
 from app.llm.structured import StructuredOutputError
@@ -197,6 +198,11 @@ async def submit(
             url = str(TypeAdapter(HttpUrl).validate_python(url))
         except ValidationError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid url") from error
+        if not is_platform_url(url):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "only Facebook, TikTok, X, YouTube or Instagram post links",
+            )
     if not (text or uploads or url):  # a link alone is fetched by the worker (ADR 0010)
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send text, a link, or media")
     if len(uploads) > MAX_FILES:
