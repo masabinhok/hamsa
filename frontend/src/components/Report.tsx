@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, ViewTransition } from "react";
 import { ApiError, site, type CaseStatus, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
 import { ACCEPT, MAX_FILES, MAX_FILES_NE, Masthead, Mine, Recent, Tag, shortStatus, steps } from "@/components/Site";
@@ -44,15 +44,17 @@ export function Report({ id }: { id: string }) {
   return (
     <div className={styles.site} lang="ne">
       <Masthead />
-      <main className={styles.page}>
-        <div className={styles.columns}>
-          <Status id={id} />
-          <aside className={styles.rail} aria-label="तपाईंका रिपोर्ट · Your reports">
-            <Mine selected={id} />
-          </aside>
-        </div>
-        <Recent selected={id} compact />
-      </main>
+      <ViewTransition>
+        <main className={styles.page}>
+          <div className={styles.columns}>
+            <Status id={id} />
+            <aside className={styles.rail} aria-label="तपाईंका रिपोर्ट · Your reports">
+              <Mine selected={id} />
+            </aside>
+          </div>
+          <Recent selected={id} compact />
+        </main>
+      </ViewTransition>
     </div>
   );
 }
@@ -132,7 +134,7 @@ function Status({ id }: { id: string }) {
   }
 
   const shareButton = (
-    <button type="button" className={styles.share} onClick={share}>
+    <button type="button" className={styles.share} onClick={share} data-done={shared ? "" : undefined}>
       {shared ? "लिंक कपी भयो · Copied" : "सेयर गर्नुहोस् · Share"}
     </button>
   );

@@ -113,3 +113,12 @@ textarea {
     --dur-medium: 150ms;
   }
 }
+
+/* Page-change crossfades (React ViewTransition) follow the same rule as every other motion. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

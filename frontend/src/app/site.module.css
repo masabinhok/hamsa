@@ -816,3 +816,172 @@
     animation: none;
   }
 }
+
+/* ---------- motion: small, purposeful, and off for readers who ask for less ---------- */
+
+.nav a {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size var(--dur-short) var(--ease-out);
+}
+
+.nav a:hover,
+.nav a:focus-visible {
+  text-decoration: none;
+  background-size: 100% 1px;
+}
+
+.field input,
+.field textarea {
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--glacier-wash);
+  outline: none;
+}
+
+.submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.share {
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.share:hover {
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.share:active {
+  transform: scale(var(--press));
+}
+
+.share[data-done] {
+  animation: pop var(--dur-medium) var(--ease-out);
+}
+
+.thumb img,
+.thumb video {
+  transition: transform var(--dur-medium) var(--ease-out);
+}
+
+.card:hover .thumb img,
+.card:hover .thumb video,
+.lead:hover .thumb img,
+.lead:hover .thumb video {
+  transform: scale(1.04);
+}
+
+.cardTitle,
+.rowTitle {
+  text-decoration-color: transparent;
+  transition: text-decoration-color var(--dur-short) var(--ease-out);
+}
+
+.row {
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.row:hover {
+  background: var(--glacier-wash);
+}
+
+/* Skeleton cards while the front page loads: the layout is there before the stories are. */
+.skeleton {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.skeleton span {
+  display: block;
+  height: 1rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--milk-deep) 0%, var(--paper) 50%, var(--milk-deep) 100%) 0 0 / 200% 100%;
+}
+
+.skeleton span:first-child {
+  width: 5rem;
+}
+
+.skeleton span:nth-child(2) {
+  height: 1.4rem;
+  width: 85%;
+}
+
+.skeleton span:last-child {
+  width: 60%;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--shift));
+  }
+}
+
+@keyframes pop {
+  40% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Sections arrive in reading order on load. */
+  .send,
+  .feed > .heading,
+  .lead,
+  .rail,
+  .articleHead,
+  .figure,
+  .body {
+    animation: rise var(--dur-medium) var(--ease-out) both;
+  }
+
+  .feed > .heading,
+  .articleHead {
+    animation-delay: 60ms;
+  }
+
+  .lead,
+  .figure {
+    animation-delay: 120ms;
+  }
+
+  .rail,
+  .body {
+    animation-delay: 180ms;
+  }
+
+  .skeleton span {
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  /* Cards and article sections rise as they scroll in, where the browser can tie animation
+     to scroll; elsewhere they are simply there. */
+  @supports (animation-timeline: view()) {
+    .card,
+    .section,
+    .box {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+}

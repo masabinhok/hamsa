@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, ViewTransition } from "react";
 import { ApiError, site, type CaseStatus, type Label, type PublicCase } from "@/lib/api";
 import { Both } from "@/components/Both";
 import { Mark } from "@/components/Mark";
@@ -109,7 +109,9 @@ export function Site() {
   return (
     <div className={styles.site} lang="ne">
       <Masthead />
-      <main className={styles.page}>
+      {/* Page changes crossfade; the bar above stays put. */}
+      <ViewTransition>
+        <main className={styles.page}>
         <section id="send" className={styles.send} aria-labelledby="send-title">
           <SendForm onSent={sent} />
         </section>
@@ -133,7 +135,8 @@ export function Site() {
             </section>
           </aside>
         </div>
-      </main>
+        </main>
+      </ViewTransition>
     </div>
   );
 }
@@ -360,7 +363,17 @@ export function Recent({ selected = null, compact = false }: { selected?: string
           <Both ne="भर्खरै जाँचिएका" en="Recently checked" />
         )}
       </h2>
-      {recent === null && <p className={styles.quiet}>लोड हुँदैछ… Loading…</p>}
+      {recent === null && (
+        <div aria-label="लोड हुँदैछ · Loading" role="status">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className={styles.skeleton} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          ))}
+        </div>
+      )}
       {recent !== null && shown.length === 0 && (
         <p className={styles.empty}>
           <Both
