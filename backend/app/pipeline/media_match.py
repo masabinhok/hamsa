@@ -204,6 +204,12 @@ class ArchiveIndex:
             },
         )
 
+    def remove(self, archive_ids: Sequence[str]) -> None:
+        match = models.MatchAny(any=list(archive_ids))
+        condition = models.FieldCondition(key="archive_id", match=match)
+        selector = models.FilterSelector(filter=models.Filter(must=[condition]))
+        self._client.delete(self._collection, points_selector=selector)
+
     def add(self, entry: ArchiveEntry, frames: Sequence[Frame], embed: Embed) -> int:
         images = [canonical(f.image) for f in frames]
         embeddings = embed(images)

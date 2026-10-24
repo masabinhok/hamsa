@@ -12,6 +12,7 @@ from app.pipeline.contracts import Route, RouteDecision, VerdictLabel
 from app.store.cases import Database, claim_job, complete_job, create_case, publish, reopen
 from app.store.models import Case, CaseStatus, Channel, TelegramReport
 from app.telegram import (
+    CORRECTED,
     HELP,
     MERGED,
     NOT_A_POST,
@@ -45,6 +46,7 @@ class FakeBotApi:
         self.files = files or {}
         self.send_status = send_status
         self.sent: list[dict[str, Any]] = []
+        self.deleted: list[int] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -63,7 +65,12 @@ class FakeBotApi:
                     self.send_status, json={"ok": False, "description": "Forbidden"}
                 )
             self.sent.append(params)
-            return httpx.Response(200, json={"ok": True, "result": {}})
+            return httpx.Response(
+                200, json={"ok": True, "result": {"message_id": 900 + len(self.sent)}}
+            )
+        if method == "deleteMessage":
+            self.deleted.append(params["message_id"])
+            return httpx.Response(200, json={"ok": True, "result": True})
         return httpx.Response(404, json={"ok": False, "description": "Not Found"})
 
     def client(self) -> Telegram:
@@ -279,7 +286,29 @@ def test_a_corrected_verdict_is_sent_again(db: Database) -> None:
 
     publish_case(db, "c1", rationale_en="It is old footage from Kullu.")
     assert notify(db, api.client(), ORIGIN) == 1
-    assert "Kullu" in api.sent[-1]["text"]
+    first, correction = api.sent
+    assert not first["text"].startswith(CORRECTED)
+    assert correction["text"].startswith(CORRECTED)
+    assert "Kullu" in correction["text"]
+    assert api.deleted == [901]  # the wrong verdict is gone from the reader's chat
+
+
+def test_a_correction_stands_when_the_old_message_cannot_be_deleted(db: Database) -> None:
+    api = FakeBotApi()
+    telegram_case(db, "c1")
+    publish_case(db, "c1")
+    notify(db, api.client(), ORIGIN)
+    with db.session.begin() as session:
+        reopen(session, session.get_one(Case, "c1"), "Sita", "wrong label")
+    publish_case(db, "c1", rationale_en="It is old footage from Kullu.")
+
+    def too_old(*_: object) -> None:
+        raise ChatError(400, "message can't be deleted")
+
+    telegram = api.client()
+    telegram.unsend = too_old  # type: ignore[method-assign]
+    assert notify(db, telegram, ORIGIN) == 1
+    assert notify(db, telegram, ORIGIN) == 0  # told once, even though the delete failed
 
 
 def test_a_merged_report_hears_the_earlier_reports_verdict(db: Database) -> None:

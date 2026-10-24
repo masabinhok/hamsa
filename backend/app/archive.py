@@ -143,6 +143,23 @@ def keep_keyframes(
     return row
 
 
+def forget(prefix: str, index: ArchiveIndex) -> list[str]:
+    """Drop every archived item whose id starts with `prefix`: its manifest row, kept
+    frames and index points. Returns the ids dropped."""
+    rows = manifest_rows()
+    gone = [r for r in rows if r.archive_id.startswith(prefix)]
+    if not gone:
+        return []
+    with (ARCHIVE_DIR / "manifest.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(ManifestRow.model_fields))
+        writer.writeheader()
+        writer.writerows(r.model_dump(mode="json") for r in rows if r not in gone)
+    for row in gone:
+        shutil.rmtree(ARCHIVE_DIR / "media" / row.media_file, ignore_errors=True)
+    index.remove([r.archive_id for r in gone])
+    return [r.archive_id for r in gone]
+
+
 def eval_media_hashes() -> set[str]:
     """sha256 of every eval post file: a test case made from one must not teach the archive."""
     media = EVAL_DIR / "media"

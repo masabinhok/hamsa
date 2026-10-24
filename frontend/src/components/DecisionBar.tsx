@@ -76,6 +76,12 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
       return;
     }
     const edited = rationaleEn !== draft?.rationale_en || rationaleNe !== draft?.rationale_ne;
+    if (draft && label !== draft.label && !edited) {
+      // The draft argues for its own label; published beside another, it contradicts itself.
+      setEditing(true);
+      setFailure(`The draft explains why it is ${labelName[draft.label].en.toLowerCase()}. Rewrite the English for ${labelName[label].en.toLowerCase()}, then publish.`);
+      return;
+    }
     send(
       {
         action: "publish",
@@ -95,7 +101,7 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
         className={styles.bar}
         onSubmit={(event) => {
           event.preventDefault();
-          send({ action: "reopen", checker: name, note: note || "reopened" }, "Reopened");
+          send({ action: "reopen", checker: name, note: note || "reopened" }, found.status === "published" ? "Reopened for correction" : "Reopened");
         }}
       >
         <div className={styles.actions}>
@@ -107,13 +113,13 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
           </p>
           <input
             className={styles.note}
-            placeholder="Why reopen? (new evidence, a correction)"
+            placeholder={found.status === "published" ? "What was wrong? (kept in the history)" : "Why reopen? (new evidence)"}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             aria-label="Reason for reopening"
           />
           <button className={styles.secondary} disabled={busy}>
-            {busy ? "Reopening…" : "Reopen"}
+            {busy ? "Reopening…" : found.status === "published" ? "Correct this verdict" : "Reopen"}
           </button>
           {failure && <p className={styles.failure} role="alert">{failure}</p>}
         </div>

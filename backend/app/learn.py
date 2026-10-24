@@ -40,6 +40,8 @@ class Verdicted:
 
 def teach(lesson: Verdicted, index: ArchiveIndex, embed: Embed, fetch: Fetch) -> list[str]:
     """Archive what this verdict teaches; returns the archive ids added."""
+    # A corrected verdict replaces what the case taught before, label and wording both.
+    archive.forget(f"case-{lesson.case_id}-", index)
     added: list[str] = []
     if lesson.original_url and lesson.label in REFUTED:
         added += _keep_original(lesson, lesson.original_url, index, embed, fetch)

@@ -38,7 +38,7 @@ from app.store.cases import (
     new_case_id,
     save_media,
 )
-from app.store.models import Case, CaseEvent, CaseStatus, Channel, TelegramReport
+from app.store.models import Case, CaseEvent, CaseStatus, Channel, SentVerdict, TelegramReport
 
 API = "https://api.telegram.org"
 POLL_S = 25  # long-poll timeout; getUpdates returns at once when a message arrives
@@ -65,6 +65,10 @@ HELP = (
 ABOUT = "विपद्‌बारे शंकास्पद पोस्ट पठाउनुहोस्। Send a doubtful disaster post; fact-checkers reply."
 # Every command answers with HELP; listing one gives readers the menu button.
 COMMANDS = [{"command": "help", "description": "कसरी पठाउने · How to send a post"}]
+CORRECTED = (
+    "✏️ संशोधन: यो रिपोर्टको निर्णय तथ्य जाँचकर्ताले सच्याउनुभएको छ।\n"
+    "Correction: a fact-checker has changed the verdict on this report.\n\n"
+)
 NOT_A_POST = (
     "Facebook, TikTok, X, YouTube वा Instagram को पोस्टको लिंक, वा त्यसको फोटो वा भिडियो पठाउनुहोस्।\n"
     "Hamsa checks posts from Facebook, TikTok, X, YouTube and Instagram: send the post's link, "
@@ -150,7 +154,7 @@ class Telegram:
             raise ChatError(response.status_code, "file download failed")
         return response.content
 
-    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None:
+    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> int | None:
         params: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
@@ -161,7 +165,12 @@ class Telegram:
                 "message_id": reply_to,
                 "allow_sending_without_reply": True,
             }
-        self.call("sendMessage", **params)
+        sent: dict[str, Any] = self.call("sendMessage", **params)
+        return sent.get("message_id")
+
+    def unsend(self, chat_id: int, message_id: int) -> None:
+        # Telegram lets a bot delete its own messages for 48 hours; after that this raises.
+        self.call("deleteMessage", chat_id=chat_id, message_id=message_id)
 
 
 class Chat(Protocol):
@@ -169,7 +178,11 @@ class Chat(Protocol):
 
     def download(self, file_id: str) -> bytes: ...
 
-    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> None: ...
+    def send(self, chat_id: int, text: str, reply_to: int | None = None) -> int | None:
+        """Sends a message; returns its id where the platform can later delete it."""
+        ...
+
+    def unsend(self, chat_id: int, message_id: int) -> None: ...
 
 
 @dataclass
@@ -390,8 +403,9 @@ def _latest_event(session: Session, case_id: str, status: CaseStatus) -> CaseEve
     return session.scalar(query)
 
 
-def news_for(session: Session, case: Case, origin: str) -> tuple[int, str] | None:
-    """The newest thing the submitter should hear, with the event id it answers."""
+def news_for(session: Session, case: Case, origin: str) -> tuple[int, str, bool] | None:
+    """The newest thing the submitter should hear, the event id it answers, and whether
+    it is a verdict (which a later correction replaces)."""
     checked = answered_by(session, case)
     if checked.status is CaseStatus.PUBLISHED:
         event = _latest_event(session, checked.id, CaseStatus.PUBLISHED)
@@ -403,14 +417,30 @@ def news_for(session: Session, case: Case, origin: str) -> tuple[int, str] | Non
             lines += ["", "स्रोत · Sources:"]
             lines += [f"• {source.name}: {source.url}" for source in verdict.sources[:4]]
         lines += ["", status_link(origin, checked.id)]
-        return event.id, "\n".join(lines)
+        return event.id, "\n".join(lines), True
     if checked.status is CaseStatus.REJECTED:
         event = _latest_event(session, checked.id, CaseStatus.REJECTED)
-        return (event.id, REJECTED) if event else None
+        return (event.id, REJECTED, False) if event else None
     if case.status is CaseStatus.MERGED:
         event = _latest_event(session, case.id, CaseStatus.MERGED)
-        return (event.id, MERGED) if event else None
+        return (event.id, MERGED, False) if event else None
     return None
+
+
+def _replace_verdict(
+    session: Session, chat: Chat, chat_id: int, case_id: str, message_id: int | None
+) -> None:
+    """Remember the verdict just sent, deleting the one it corrects where possible."""
+    earlier = session.get(SentVerdict, case_id)
+    if earlier is None:
+        session.add(SentVerdict(case_id=case_id, message_id=message_id))
+        return
+    if earlier.message_id is not None:
+        try:
+            chat.unsend(chat_id, earlier.message_id)
+        except (ChatError, httpx.HTTPError) as error:  # older than 48 h: the correction stands
+            log.info("case %s: earlier verdict not deleted (%s)", case_id, type(error).__name__)
+    earlier.message_id = message_id
 
 
 def notify(db: Database, telegram: Chat, origin: str, channel: Channel = Channel.TELEGRAM) -> int:
@@ -421,18 +451,23 @@ def notify(db: Database, telegram: Chat, origin: str, channel: Channel = Channel
         reports = select(TelegramReport).join(Case).where(Case.channel == channel)
         for report in session.scalars(reports):
             case = session.get_one(Case, report.case_id)
-            messages: list[str] = []
+            messages: list[tuple[str, bool]] = []
             if not report.asked_for_media and needs_media(case):
-                messages.append(ASK_FOR_MEDIA)
+                messages.append((ASK_FOR_MEDIA, False))
             news = news_for(session, case, origin)
             if news and news[0] > report.told_event:
-                messages.append(news[1])
+                messages.append(news[1:])
             if not messages:
                 continue
+            earlier = session.get(SentVerdict, case.id)
             try:
-                for text in messages:
-                    telegram.send(report.chat_id, text, reply_to=report.message_id)
+                for text, is_verdict in messages:
+                    if is_verdict and earlier is not None:
+                        text = CORRECTED + text
+                    message_id = telegram.send(report.chat_id, text, reply_to=report.message_id)
                     sent += 1
+                    if is_verdict:
+                        _replace_verdict(session, telegram, report.chat_id, case.id, message_id)
             except ChatError as error:
                 if error.status != httpx.codes.FORBIDDEN.value:  # the user blocked the bot
                     log.warning("case %s: message not sent (%s)", case.id, error.status)
