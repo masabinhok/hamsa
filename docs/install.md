@@ -60,7 +60,8 @@ Readers can forward doubtful posts to a Telegram bot instead of opening the webs
 
 1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and follow the steps. It gives you a token.
 2. In `.env`, set `TELEGRAM_BOT_TOKEN` to that token, and `FRONTEND_ORIGIN` to the public address of your site, since the bot's report links point there.
-3. Start it: `docker compose --profile telegram up -d`.
+3. Start it: `docker compose --profile telegram up -d`. On start it sets its own description and its `/help` menu.
+4. For its picture, send `/setuserpic` to @BotFather with `docs/brand/hamsa-avatar.png`. Bots cannot set their own picture.
 
 The bot replies to each post with its report link, and messages the reader again when a verdict is published. `docker compose logs -f telegram` shows what it receives.
 
@@ -73,6 +74,7 @@ Readers can also message a Facebook Page. Meta delivers messages to a webhook, s
 3. Set `MESSENGER_PAGE_TOKEN`, `MESSENGER_APP_SECRET` and `MESSENGER_VERIFY_TOKEN` in `.env`, and start it: `docker compose --profile messenger up -d`.
 4. Open a tunnel: `cloudflared tunnel --url http://localhost:8001`. It prints an `https://….trycloudflare.com` address.
 5. In the app's webhook settings, set the callback URL to that address plus `/webhook`, enter the verify token, and subscribe the Page to `messages`.
+6. Use `docs/brand/hamsa-avatar.png` as the Page's profile picture. The bot sets the Page's Messenger greeting itself when it starts.
 
 While the app is in development mode, only the Page's admins, developers and testers can message it, which is enough for a newsroom's own use; anyone else needs Meta's app review. Every webhook body is checked against the app secret's signature, and anything unsigned is refused.
 
