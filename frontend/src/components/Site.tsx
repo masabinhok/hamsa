@@ -89,6 +89,7 @@ export function Masthead() {
         <nav className={styles.nav} aria-label="Hamsa">
           <Link href="/#checked">जाँचिएका</Link>
           <Link href="/#send">पोस्ट पठाउनुहोस्</Link>
+          <Link href="/about">हंसबारे</Link>
           <Link href="/desk" lang="en" className={styles.deskLink}>
             Checker desk
           </Link>
