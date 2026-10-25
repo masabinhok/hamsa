@@ -15,11 +15,17 @@ Verification is slow because every claim repeats the same manual steps: figure o
 A fact-checker (or a citizen, through a Telegram or Messenger bot) submits a suspicious post, image, or video. Hamsa then:
 
 1. **Extracts the claim.** Qwen3-VL reads the post and its frames and outputs structured JSON: claim, place, date claimed, numbers, and any watermarks or usernames visible in the frames.
-2. **Checks whether the media is recycled.** Perceptual hashing catches reposts even when re-encoded, mirrored, letterboxed, or captioned, and SigLIP embeddings catch heavier crops, both matched against an archive of past disaster footage from Nepal and abroad.
+2. **Checks whether the media is recycled.** Each keyframe is fingerprinted three ways and matched against Hamsa's archive of footage with a known origin. A perceptual hash (pHash) catches re-encodes, resizes and light crops. A SigLIP embedding catches the same scene under captions, overlays and heavier edits. ORB keypoints then prove geometrically that two frames are the same shot, not just a similar river. Mirrored frames are checked too.
 3. **Retrieves evidence.** bge-m3 cross-lingual search (Nepali ↔ English) over trusted news and official sources, plus fact-checks published abroad (AFP, Boom, Alt News and others) through Google's ClaimReview search when a key is set.
 4. **Drafts a verdict.** gpt-oss-120b reasons over the evidence and returns a verdict, a confidence score, and citations as JSON.
 5. **Routes the case.** The router acts on the AI's outputs: it auto-merges duplicate claims, fast-tracks high-confidence recycled media, sends ambiguous cases to a human checker with side-by-side evidence, and queues new claims for investigation.
 6. **Keeps a human in charge.** Nothing is published without a checker's one-click approval.
+
+**It gets better with use.** Every verdict a checker publishes (true, false or misleading) is fingerprinted into the archive, and so is the original footage a checker finds by hand with the desk's Lens, Yandex and TinEye buttons. The next copy of that footage, even re-encoded, cropped or re-captioned, is recognised without anyone searching. An exact repeat (same link, post or file) is answered at once with the published verdict. Hamsa remembers; it does not retrain itself, so every decision stays auditable.
+
+**How it scales.** The archive stores fingerprints, about 100 KB per keyframe, never the videos. Growth comes from use, and next from newsrooms sharing fingerprints and labels with each other, the way platforms share hashes of known harmful media ([ADR 0016](docs/adr/0016-scale-the-archive-by-sharing-fingerprints.md)).
+
+**What it does not do:** search the web for every image automatically (there is no free reverse image search API, so the checker keeps one click), or recognise footage nobody has checked before (that goes to a human with news, fact-check and web evidence).
 
 **What we deliberately don't do:** pixel-level "is this AI-generated?" detection, which is unreliable. Hamsa focuses on deterministic, explainable signals: recycled media, contradicting evidence, and source provenance.
 
