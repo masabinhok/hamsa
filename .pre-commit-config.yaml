@@ -1,4 +1,6 @@
 # Python hooks run through uv so they use the exact versions pinned in backend/uv.lock.
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -30,3 +32,9 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      # The owner wants no co-author or tool attribution in history.
+      - id: no-co-author
+        name: no co-author trailer
+        entry: bash -c '! grep -qi "^co-authored-by:" "$1"' --
+        language: system
+        stages: [commit-msg]
