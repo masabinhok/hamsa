@@ -18,7 +18,7 @@ The true posts are as important as the fakes. A system that calls everything fak
 
 ## Workflow per item (10 to 15 minutes)
 
-1. **Start from a fact-check** in [`data/eval/sources.md`](../data/eval/sources.md). One article often covers several posts.
+1. **Start from a fact-check** published by Nepal Factcheck, Newschecker Nepal, Techpana, AFP, BOOM or another published fact-checker; `fact_check_url` in `items.csv` records which. One article often covers several posts.
 2. **Find the post itself.** Fact-checks usually show a screenshot or link. Search the claim text on Facebook or TikTok if the link is dead.
 3. **Archive it** at [archive.ph](https://archive.ph) or [web.archive.org/save](https://web.archive.org/save) and keep the archive URL. Posts get deleted.
 4. **Download the media** as `data/eval/media/h001.mp4` (or `.jpg`). For video: `yt-dlp -o "data/eval/media/h001.%(ext)s" <url>`. If the post is gone, use the fact-check's screenshot or keyframe.

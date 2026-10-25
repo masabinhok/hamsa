@@ -4,7 +4,7 @@
 - Date: 2026-10-14
 
 ## Context
-Media matching is only as good as the archive. Until now the archive was 37 clips collected by hand, which does not scale to the next disaster and fills a laptop with other people's videos. The owner wanted the archive to grow as cases arrive.
+Media matching is only as good as the archive. Until now the archive was 37 clips collected by hand, which does not scale to the next disaster and fills a laptop with other people's videos. The archive has to grow as cases arrive.
 
 ## Options considered
 - **Bulk collection in advance.** Rejected: unbounded storage, and it misses what goes viral next.

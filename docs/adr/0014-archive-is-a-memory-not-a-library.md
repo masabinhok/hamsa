@@ -4,7 +4,7 @@
 - Date: 2026-10-23
 
 ## Context
-After a week of real posts the owner asked whether Hamsa needs its archive at all: it held a few dozen clips, so a partial archive seemed likely to mislead the model, and a newsroom like Techpana would need years of disaster footage to make it complete. The fear was grounded. A recent Budhi Gandaki flood was drafted false at 0.97 from a weak archive hit, and a real flood video "matched" three 2015 earthquake clips through a black frame.
+After a week of real posts the question was whether Hamsa needs its archive at all: it held a few dozen clips, so a partial archive seemed likely to mislead the model, and a newsroom like Techpana would need years of disaster footage to make it complete. The fear was grounded. A recent Budhi Gandaki flood was drafted false at 0.97 from a weak archive hit, and a real flood video "matched" three 2015 earthquake clips through a black frame.
 
 ## Options considered
 - **Drop the archive** and rely on news and fact-checks. Rejected: on the tuning split, every recycled-media fast-track rests on it (9 of 9 correct, recall 9 of 13), and no news report or fact-check exists for a repost nobody has written about. It is also the only way Hamsa recognises footage it has already checked (below).
