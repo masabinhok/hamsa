@@ -69,6 +69,13 @@ class PublicCase(BaseModel):
     needs_media: bool = False
 
 
+class VerdictPage(BaseModel):
+    items: list[PublicCase]
+    # Pass back as ?before= for the next, older page; None when nothing is left.
+    next: str | None
+    total: int
+
+
 class DeskSummary(BaseModel):
     id: str
     created_at: datetime
