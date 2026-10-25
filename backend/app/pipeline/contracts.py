@@ -104,6 +104,14 @@ class SourceKind(StrEnum):
     FACT_CHECK = "fact_check"
     # Found by open web search: shown as evidence, never counted as an independent source.
     WEB = "web"
+    # Shown by the platform on this exact post (ADR 0017): an X Community Note, TikTok's
+    # AI-generated label. About this post, never counted as an independent source.
+    PLATFORM = "platform"
+
+
+# Sources of platform passages, which the router reads (ADR 0017).
+COMMUNITY_NOTE = "X Community Notes"
+PLATFORM_AI_LABEL = "TikTok AI label"
 
 
 class Passage(Contract):

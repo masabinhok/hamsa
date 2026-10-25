@@ -564,3 +564,43 @@ def test_a_true_event_must_be_reported_around_the_posts_date(posted: date, route
         assert decision.reasons == [
             "every report confirming it is from after 2026-03-15: a later event?"
         ]
+
+
+# what the platform shows on the post (ADR 0017)
+
+NOTE = passage(
+    "note-1",
+    "X Community Notes",
+    source_kind="platform",
+    text="The video compiles clips from prior unrelated mudslide/flood incidents.",
+)
+AI_LABEL = passage("tiktok-aigc-1", "TikTok AI label", source_kind="platform")
+
+
+def test_a_true_draft_on_a_post_with_a_community_note_goes_to_a_checker() -> None:
+    decision = route(
+        outputs(
+            passages=[NOTE, *TWO_SOURCES],
+            verdict=verdict(
+                "true", 0.95, citations=[cite("p1", "supports"), cite("p2", "supports")]
+            ),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+    assert "verdict is true but X readers added context to this post" in decision.reasons
+
+
+def test_tiktoks_ai_label_counts_like_a_visible_watermark() -> None:
+    decision = route(outputs(passages=[AI_LABEL], verdict=verdict("false", 0.9)))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["visible ai-tool watermark: TikTok AI label"]
+
+
+def test_a_platform_note_is_never_an_independent_source() -> None:
+    decision = route(
+        outputs(
+            passages=[NOTE, passage("p1", "Kathmandu Post")],
+            verdict=verdict("false", 0.95, citations=[cite("note-1"), cite("p1")]),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW  # one trusted source, not two

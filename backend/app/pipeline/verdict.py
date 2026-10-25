@@ -94,6 +94,12 @@ supports is unverified, not false.
 Passages marked "web" come from an open web search, not the trusted outlets: use them, \
 but prefer a trusted passage that says the same.
 
+Passages marked "platform" are what the platform itself shows on this exact post: an X \
+Community Note (written by readers, shown only once readers who usually disagree rated it \
+helpful) or TikTok's label that the video is AI-generated. They are about this post, not \
+another one. Weigh them as evidence and check what their links say; a note that the video \
+is old or compiled from other events is a finding about the footage.
+
 citations: at most {MAX_CITATIONS} passages your decision relies on, the most direct \
 first, by label, with their stance toward the claim: "supports" or "refutes". Cite \
 nothing you did not use and nothing about another event.

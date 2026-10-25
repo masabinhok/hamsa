@@ -21,7 +21,7 @@ export function SignIn() {
   const [published, setPublished] = useState<number | null>(null);
 
   useEffect(() => {
-    site.verdicts().then((all) => setPublished(all.length), () => undefined);
+    site.verdicts().then((page) => setPublished(page.total), () => undefined);
   }, []);
 
   async function submit(event: FormEvent) {

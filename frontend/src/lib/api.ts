@@ -47,7 +47,7 @@ export interface ArchiveHit {
 export interface Passage {
   passage_id: string;
   source: string;
-  source_kind: "news" | "official" | "fact_check" | "web";
+  source_kind: "news" | "official" | "fact_check" | "web" | "platform";
   url: string;
   title: string | null;
   published_at: string | null;
@@ -158,6 +158,12 @@ export interface PublicCase {
   needs_media: boolean;
 }
 
+export interface VerdictPage {
+  items: PublicCase[];
+  next: string | null;
+  total: number;
+}
+
 // The public side: anyone can submit a post and follow its verdict, no sign-in.
 export const site = {
   submit: (form: FormData) => request<{ id: string }>("/cases", { method: "POST", body: form }),
@@ -165,7 +171,9 @@ export const site = {
   // The file behind a link the worker could not open; the same report is checked again.
   sendMedia: (id: string, form: FormData) =>
     request<PublicCase>(`/cases/${encodeURIComponent(id)}/media`, { method: "POST", body: form }),
-  verdicts: () => request<PublicCase[]>("/verdicts"),
+  // Newest first, a page at a time; pass the previous page's `next` to get older ones.
+  verdicts: (before?: string) =>
+    request<VerdictPage>(`/verdicts${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   // Served only once a checker has published the report.
   mediaUrl: (id: string, name: string) =>
     `${API_URL}/cases/${encodeURIComponent(id)}/media/${encodeURIComponent(name)}`,

@@ -114,3 +114,41 @@
     transform: translateX(calc(-1 * var(--shift)));
   }
 }
+
+/* Filter chips: clear one kind of draft at a time (e.g. all true ones first). */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  text-decoration: none;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--ink-soft);
+}
+
+.chip[aria-current] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.chip[aria-current] .count {
+  color: var(--glacier);
+}

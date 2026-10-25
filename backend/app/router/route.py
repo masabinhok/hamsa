@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.pipeline.contracts import (
+    COMMUNITY_NOTE,
+    PLATFORM_AI_LABEL,
     ArchiveHit,
     ArchiveLabel,
     Claim,
@@ -117,7 +119,7 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         raise ValueError(f"verdict cites passages it was not given: {unknown}")
 
     strong_prior = recycled_hits(outputs, thresholds)
-    ai_marks = _ai_tool_marks(claim)
+    ai_marks = _ai_tool_marks(claim) + _platform_ai_labels(evidence)
     dated = outputs.posted_on is not None or claim.claimed_date is not None
     posted = None if claim.claimed_date else outputs.posted_on
     conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks, dated=dated, posted=posted)
@@ -284,6 +286,11 @@ def _found_refuting(verdict: Verdict) -> bool:
     )
 
 
+def _platform_ai_labels(evidence: Evidence) -> list[str]:
+    # A platform's own "AI-generated" label is as plain a mark as a visible watermark.
+    return [p.source for p in evidence.passages if p.source == PLATFORM_AI_LABEL][:1]
+
+
 def _ai_tool_marks(claim: Claim) -> list[str]:
     found: list[str] = []
     for mark in claim.watermarks:
@@ -306,8 +313,8 @@ def _agreeing_sources(verdict: Verdict, evidence: Evidence) -> list[str]:
     sources: list[str] = []
     for citation in verdict.citations:
         passage = evidence.by_id(citation.passage_id)
-        # Web pages are untrusted: shown to the checker, never a reason to skip one.
-        trusted = passage and passage.source_kind is not SourceKind.WEB
+        # Web pages and platform notes are shown to the checker, never a reason to skip one.
+        trusted = passage and passage.source_kind not in (SourceKind.WEB, SourceKind.PLATFORM)
         if passage and trusted and citation.stance is expected and passage.source not in sources:
             sources.append(passage.source)
     return sources
@@ -358,6 +365,10 @@ def _conflicts(
         if verdict.media_finding is MediaFinding.NOT_ESTABLISHED:
             # Real event, unknown footage: the post's implicit claim is still open.
             conflicts.append("the event is confirmed but nothing shows the footage is from it")
+        if any(p.source == COMMUNITY_NOTE for p in evidence.passages):
+            # A note shown on X has been rated helpful by readers who usually disagree; a
+            # true draft beside one went out wrong (a compilation of old clips, Oct 2026).
+            conflicts.append("verdict is true but X readers added context to this post")
 
     if verdict.label in REFUTING_LABELS and not (
         strong_prior or ai_marks or _found_refuting(verdict)

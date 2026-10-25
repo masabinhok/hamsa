@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, desk, type DeskSummary } from "./api";
+import { useSearchParams } from "next/navigation";
+import { ApiError, desk, type DeskSummary, type Label } from "./api";
 import { signOut, useChecker } from "./session";
 
 const POLL_MS = 5000; // new cases arrive while the checker works
@@ -61,4 +62,17 @@ export function useQueue(): QueueState {
   const queue = useContext(QueueContext);
   if (!queue) throw new Error("useQueue outside QueueProvider");
   return queue;
+}
+
+const LABELS: Label[] = ["false", "misleading", "true", "unverifiable"];
+
+/** The desk's "?label=" filter, so a checker can clear one kind of draft at a time. */
+export function useLabelFilter(): { label: Label | null; query: string } {
+  const raw = useSearchParams().get("label");
+  const label = LABELS.find((known) => known === raw) ?? null;
+  return { label, query: label ? `?label=${label}` : "" };
+}
+
+export function matchesFilter(item: DeskSummary, label: Label | null): boolean {
+  return label === null || item.proposed_label === label;
 }

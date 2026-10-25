@@ -405,6 +405,7 @@ function PassageItem({ passage, stance }: { passage: Passage; stance?: "supports
     official: "official",
     fact_check: "fact-check",
     web: "web search, unvetted",
+    platform: "shown on the post itself",
   };
   const kind = kinds[passage.source_kind];
   return (
