@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { Mark } from "@/components/Mark";
 import { Queue } from "@/components/Queue";
 import { SignIn } from "@/components/SignIn";
@@ -14,7 +15,9 @@ export default function DeskLayout({ children }: LayoutProps<"/desk">) {
   const atOverview = usePathname() === "/desk";
   if (!checker) return <SignIn />;
 
+  // The queue filter reads the URL (useSearchParams), which Next wants inside a Suspense boundary.
   return (
+    <Suspense fallback={null}>
     <CheckerProvider checker={checker}>
       <QueueProvider>
         <div className={styles.desk}>
@@ -45,6 +48,7 @@ export default function DeskLayout({ children }: LayoutProps<"/desk">) {
         </div>
       </QueueProvider>
     </CheckerProvider>
+    </Suspense>
   );
 }
 
