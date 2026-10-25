@@ -48,7 +48,8 @@ BACKOFF = (timedelta(seconds=30), timedelta(minutes=2))
 POLL_S = 1.0
 
 # Text, media, and the post's own date when the link gave one.
-Runner = Callable[[str | None, Sequence[Path], date | None], Result]
+# Text, media, the post's date and its link (for what the platform shows on it).
+Runner = Callable[[str | None, Sequence[Path], date | None, str | None], Result]
 Fetch = Callable[[str, Path], Downloaded]
 Teach = Callable[[Verdicted], list[str]]
 log = logging.getLogger("hamsa.worker")
@@ -124,7 +125,7 @@ def process_next(
 
     with db.session() as session:
         case = session.get_one(Case, case_id)
-        text = case.text
+        text, url = case.text, case.source_url
         paths = [media_root / case_id / m.filename for m in case.media]
         original = original or same_post(session, case)
 
@@ -140,7 +141,7 @@ def process_next(
         result = Result(outputs=empty, decision=route(empty))
     else:
         try:
-            result = runner(text, paths, posted)
+            result = runner(text, paths, posted, url)
         except Exception as error:  # a pipeline bug must not loop forever or lose the case
             log.exception("case %s: pipeline error", case_id)
             result = Result(
@@ -216,11 +217,13 @@ def main() -> int:
     def lesson(verdicted: Verdicted) -> list[str]:
         return teach(verdicted, pipeline.archive, pipeline.embed_image, fetch)
 
-    def runner(text: str | None, media: Sequence[Path], posted: date | None) -> Result:
+    def runner(
+        text: str | None, media: Sequence[Path], posted: date | None, url: str | None
+    ) -> Result:
         # The case being run is PROCESSING, so the routed cases never include itself.
         with db.session() as session:
             waiting = open_claims(session)
-        return run(pipeline, text, media, seen_on=posted, open_claims=waiting)
+        return run(pipeline, text, media, seen_on=posted, open_claims=waiting, source_url=url)
 
     log.info("worker ready")
     try:

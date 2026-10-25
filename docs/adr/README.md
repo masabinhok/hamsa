@@ -17,5 +17,6 @@ One file per decision that had a real alternative. A record is never edited afte
 | [0011](0011-archive-learns-from-verdicts.md) | The archive learns from verdicts, not from bulk downloads or web search | Accepted |
 | [0012](0012-search-fact-checks-published-abroad.md) | Search fact-checks published abroad through ClaimReview | Accepted |
 | [0013](0013-web-evidence-through-self-hosted-searxng.md) | Search the web for evidence about the event through self-hosted SearXNG | Accepted |
+| [0017](0017-read-what-the-platform-shows-on-the-post.md) | Read what the platform shows on the post: X Community Notes and TikTok's AI label | Accepted |
 
 Template: Status, Date, Context, Options considered, Decision, Consequences.

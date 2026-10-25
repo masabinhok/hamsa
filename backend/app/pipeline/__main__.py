@@ -20,6 +20,7 @@ from app.pipeline.claim_reviews import ClaimReviewSearch, covering, same_claim_o
 from app.pipeline.contracts import Claim
 from app.pipeline.extract import extract_claim
 from app.pipeline.media_match import ArchiveIndex, SiglipEmbedder
+from app.pipeline.platform import on_post
 from app.pipeline.retrieve import EvidenceStore
 from app.pipeline.run import Pipeline, Result, run
 from app.pipeline.verdict import Reasoner
@@ -68,6 +69,7 @@ def build_pipeline(settings: Settings) -> Pipeline:
         ),
         vet_fact_checks=vet,
         find_web=WebSearch(str(settings.searxng_url), embed_text) if settings.searxng_url else None,
+        find_on_post=on_post,
     )
 
 
