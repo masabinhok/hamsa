@@ -1,0 +1,669 @@
+/* The Hamsa Book: a full-page reader. A fixed chapter rail and one chapter per page, so nobody
+   scrolls one endless article; the river line (glacier) marks every teaching box, as in the
+   original book. Colours and type come from globals.css. */
+.book,
+.cover {
+  --beak: #b8731f; /* the swan's beak: the "why" and keypoint accents, nowhere else */
+  min-height: 100dvh;
+  background: var(--milk);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.book {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 60rem) {
+  .book {
+    grid-template-columns: 19rem minmax(0, 1fr);
+  }
+}
+
+/* ---------- chapter rail ---------- */
+
+.rail {
+  display: none;
+}
+
+@media (min-width: 60rem) {
+  .rail {
+    display: block;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-4) var(--space-6);
+    background: var(--milk-deep);
+    border-right: 1px solid var(--rule);
+    font-size: 0.95rem;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-family: var(--font-read);
+  font-weight: 600;
+  font-size: var(--step-1);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.partName {
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.chapterList {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chapterList a {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.chapterList a:hover {
+  background: var(--glacier-wash);
+  color: var(--ink);
+}
+
+.chapterList a[aria-current="page"] {
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.home {
+  display: inline-block;
+  margin-top: var(--space-5);
+  color: var(--silt);
+  font-size: 0.95rem;
+}
+
+.mobileContents {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mobileContents summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mobileContents[open] {
+  max-height: 100dvh;
+  overflow-y: auto;
+}
+
+@media (min-width: 60rem) {
+  .mobileContents {
+    display: none;
+  }
+}
+
+/* ---------- a chapter ---------- */
+
+.main {
+  min-width: 0;
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+
+.chapter {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.chapter p,
+.chapter ul,
+.chapter ol {
+  margin: 0 0 var(--space-4);
+}
+
+.chapter ul,
+.chapter ol {
+  padding-left: 1.3rem;
+}
+
+.chapter li + li {
+  margin-top: var(--space-2);
+}
+
+.chapter h3 {
+  margin: var(--space-6) 0 var(--space-3);
+  font-family: var(--font-read);
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.chapter a {
+  text-decoration-color: var(--glacier);
+  text-decoration-thickness: 2px;
+}
+
+.chapter code {
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+  background: var(--milk-deep);
+  font-size: 0.9em;
+}
+
+.chapter [lang="ne"] {
+  font-family: var(--font-read);
+}
+
+.chapterHead {
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 3px solid var(--ink);
+}
+
+.eyebrow {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.chapterHead h1 {
+  margin: var(--space-2) 0 var(--space-3);
+  font-family: var(--font-read);
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.lede {
+  font-size: var(--step-1);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.story {
+  font-family: var(--font-read);
+  font-size: 1.125rem;
+  line-height: 1.85;
+}
+
+.small {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+/* ---------- teaching boxes ---------- */
+
+.block {
+  display: block;
+  margin: var(--space-5) 0;
+  padding: var(--space-4) var(--space-4);
+  background: var(--paper);
+  border-left: 4px solid var(--glacier);
+  border-radius: 0 8px 8px 0;
+}
+
+.block p:last-child,
+.block dl {
+  margin-bottom: 0;
+}
+
+.tag {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.zero {
+  background: var(--glacier-wash);
+}
+
+.line {
+  border-left-color: var(--ink);
+}
+
+.line p {
+  font-family: var(--font-read);
+  font-size: 1.125rem;
+  line-height: 1.55;
+}
+
+.why {
+  border-left-color: var(--beak);
+}
+
+.num {
+  border-left-color: var(--true);
+}
+
+.big {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-read);
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.asks {
+  border-left-color: var(--misleading);
+}
+
+.asks dl {
+  margin: 0;
+}
+
+.asks dt {
+  margin-top: var(--space-3);
+  font-weight: 600;
+}
+
+.asks div:first-child dt {
+  margin-top: 0;
+}
+
+.asks dd {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-soft);
+}
+
+/* ---------- verdicts, timeline, numbers ---------- */
+
+.verdicts {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.verdicts > div {
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--verdict);
+  background: var(--paper);
+  border-radius: 0 8px 8px 0;
+}
+
+.verdicts [data-label="false"] {
+  --verdict: var(--false);
+}
+
+.verdicts [data-label="misleading"] {
+  --verdict: var(--misleading);
+}
+
+.verdicts [data-label="true"] {
+  --verdict: var(--true);
+}
+
+.verdicts [data-label="unverifiable"] {
+  --verdict: var(--unverifiable);
+}
+
+.verdicts dt {
+  font-weight: 600;
+  color: var(--verdict);
+}
+
+.verdicts dd {
+  margin: 0;
+}
+
+.timeline {
+  margin: var(--space-5) 0;
+  padding: 0 !important;
+  list-style: none;
+  border-left: 2px solid var(--glacier);
+}
+
+.timeline li {
+  position: relative;
+  margin: 0 !important;
+  padding: 0 0 var(--space-4) var(--space-4);
+}
+
+.timeline li::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 0.45em;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+}
+
+.when {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+
+.figures div {
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.figures b {
+  display: block;
+  font-family: var(--font-read);
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--true);
+}
+
+.figures span {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.tableWrap {
+  margin: var(--space-4) 0;
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tableWrap thead th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.tableWrap tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- previous / next ---------- */
+
+.pager {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--rule);
+}
+
+.pager a {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: var(--font-read);
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.pager a:hover {
+  border-color: var(--ink);
+}
+
+.pager span {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silt);
+}
+
+.nextLink {
+  text-align: right;
+}
+
+/* ---------- cover ---------- */
+
+.cover {
+  display: grid;
+  align-content: center;
+  gap: var(--space-7);
+  padding: var(--space-7) var(--space-4);
+}
+
+@media (min-width: 60rem) {
+  .cover {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: center;
+    padding: var(--space-7) max(var(--space-7), 6vw);
+  }
+}
+
+.coverHead {
+  display: grid;
+  gap: var(--space-4);
+  justify-items: start;
+}
+
+.coverHead h1 {
+  font-family: var(--font-read);
+  font-size: clamp(2.1rem, 5vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.coverHead h1 span {
+  color: var(--glacier);
+}
+
+.coverLede {
+  max-width: 36rem;
+  font-size: var(--step-1);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.coverActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-5);
+}
+
+.coverActions .home {
+  margin-top: 0;
+}
+
+.start {
+  display: inline-block;
+  padding: var(--space-3) var(--space-5);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--milk);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.start:hover {
+  background: var(--ink-soft);
+}
+
+.coverContents {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+}
+
+/* ---------- diagrams ---------- */
+
+.figure {
+  margin: var(--space-5) 0;
+  overflow-x: auto;
+}
+
+.figure svg {
+  display: block;
+  width: 100%;
+  min-width: 34rem; /* below this the labels get too small to read; the figure scrolls instead */
+  height: auto;
+  padding: var(--space-2);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.figure figcaption {
+  margin-top: var(--space-2);
+  font-size: 0.9rem;
+  color: var(--silt);
+}
+
+.dTitle {
+  font: 600 13px var(--font-ui);
+  fill: var(--ink);
+}
+
+.dSub {
+  font: 12px var(--font-ui);
+  fill: var(--silt);
+}
+
+.step rect {
+  fill: var(--paper);
+  stroke: var(--rule);
+  stroke-width: 1.5;
+}
+
+.ask rect {
+  fill: var(--milk);
+  stroke: var(--silt);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+}
+
+.person rect {
+  fill: var(--ink);
+  stroke: var(--ink);
+}
+
+.person .dTitle,
+.person .dSub {
+  fill: var(--paper);
+}
+
+.good rect {
+  fill: var(--glacier-wash);
+  stroke: var(--true);
+  stroke-width: 1.5;
+}
+
+.store rect {
+  fill: var(--milk-deep);
+  stroke: var(--glacier);
+  stroke-width: 1.5;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--silt);
+  stroke-width: 1.5;
+}
+
+.loop {
+  fill: none;
+  stroke: var(--beak);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.tip {
+  fill: var(--silt);
+}
+
+.tipLoop {
+  fill: var(--beak);
+}
+
+.panel {
+  fill: var(--milk-deep);
+  stroke: var(--rule);
+}
+
+.ink {
+  fill: var(--ink);
+}
+
+.glacier {
+  fill: var(--glacier);
+}
+
+.rule {
+  fill: var(--rule);
+}
+
+.match {
+  stroke: var(--true);
+  stroke-width: 1.2;
+}
+
+.point {
+  fill: var(--beak);
+}
