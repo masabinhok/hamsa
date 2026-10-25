@@ -76,6 +76,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         SITE_URL: ${FRONTEND_ORIGIN:-http://localhost:3000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "127.0.0.1:3000:3000"
     restart: unless-stopped

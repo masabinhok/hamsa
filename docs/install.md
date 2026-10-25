@@ -9,7 +9,7 @@ This guide is for the person who sets Hamsa up for a newsroom or fact-checking t
 - **[Ollama](https://ollama.com)** for the local models. It runs outside Docker because it needs the GPU.
 - **A free [Groq](https://console.groq.com) API key** for the verdict model (open-weight gpt-oss). Without it, verdicts run on the local model, which is weaker and never fast-tracked.
 - **Optional: a free Google Fact Check Tools API key**, so Hamsa also finds fact-checks published abroad (AFP, Boom, Alt News and others). In the [Google Cloud console](https://console.cloud.google.com), create a project, enable "Fact Check Tools API", and create an API key under Credentials.
-- **Firefox, signed in to Facebook and TikTok** with an account the desk uses. Hamsa borrows that login to open links readers send (ADR 0010). YouTube needs no login.
+- **Firefox, signed in to Facebook and TikTok** with an account the desk uses. Hamsa borrows that login to open links readers send (ADR 0010); YouTube needs no login. The worker can read that Firefox profile, so use one that is signed in to nothing else. Firefox installed from snap (Ubuntu's default) keeps its profile in `~/snap/firefox/common/.mozilla`: change the worker's `.mozilla` mount in `docker-compose.yml` to that path.
 
 ## Set it up
 
@@ -20,9 +20,10 @@ git clone https://github.com/masabinhok/hamsa.git && cd hamsa
 ollama pull qwen3-vl:8b-instruct
 ollama pull bge-m3
 
-cp .env.example .env
+cp .env.example .env && chmod 600 .env
 # In .env: set GROQ_API_KEY, FETCH_BROWSER=firefox to open Facebook and TikTok links,
-# FACT_CHECK_API_KEY if you have one, and a secret for the local web search:
+# FACT_CHECK_API_KEY if you have one, DESK_TOKEN only if you want an operator's key (make it long
+# and random: openssl rand -hex 32), and a secret for the local web search:
 echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 
 docker compose up -d --build
@@ -35,10 +36,10 @@ This starts six services: the vector store (`qdrant`), the API, the worker that 
 ```bash
 docker compose run --rm worker python -m app.corpus fetch    # the last 30 days of news and all fact-checks, ~2 min
 docker compose run --rm worker python -m app.corpus index    # embed them, ~15 min on the GPU
-docker compose run --rm worker python -m app.archive         # index the starting footage archive
+docker compose run --rm worker python -m app.archive         # only if you added clips to data/archive/media
 ```
 
-From then on the corpus watcher keeps the news current, and the archive grows by itself from every published verdict (ADR 0011).
+From then on the corpus watcher keeps the news current, and the archive grows by itself from every published verdict (ADR 0011). The repository does not ship the starting footage (other people's videos), so a new desk's archive starts empty; add known clips with `python -m app.archive add <url> --label verified_genuine --context "…"`.
 
 ### Give each fact-checker an account
 
@@ -50,7 +51,7 @@ This prints Sita's access code once. Give it to her privately; Hamsa keeps only 
 
 ## Use it
 
-- **Public page:** `http://localhost:3000`. Readers paste a link or upload a photo or video and get a report page that updates when a verdict is published. To open it to the public, put it behind your usual web server with HTTPS.
+- **Public page:** `http://localhost:3000`. Readers paste a link or upload a photo or video and get a report page that updates when a verdict is published. To open it to the public, put it behind your usual web server with HTTPS, together with the API: readers' browsers call the API at the address built into the website (`NEXT_PUBLIC_API_URL`, default `http://localhost:8000`), so serve the API publicly too, set `NEXT_PUBLIC_API_URL` and `FRONTEND_ORIGIN` in `.env` to the public addresses, and rebuild (`docker compose up -d --build`). Have the web server cap request bodies (about 410 MB) and pass the client's address, so the per-reader limits see real readers.
 - **Checker desk:** `http://localhost:3000/desk`. Sign in with an access code. Cases arrive sorted: ready to publish, needs a checker, new claims.
   - When you refute a recycled post, paste where you found the original into "Original found at". Hamsa remembers that footage, and its next reposts are recognised without anyone searching.
 
