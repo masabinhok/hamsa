@@ -160,8 +160,17 @@ class RateLimiter:
         return True
 
 
+LOOPBACK = {"127.0.0.1", "::1"}
+
+
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    """Behind a Cloudflare tunnel every request arrives from cloudflared on this host, so the
+    reader's address is the one Cloudflare's edge writes; from anywhere else the header could
+    be forged, so it is ignored."""
+    peer = request.client.host if request.client else "unknown"
+    if peer in LOOPBACK:
+        return request.headers.get("cf-connecting-ip", peer)
+    return peer
 
 
 def limit_submissions(request: Request) -> None:
