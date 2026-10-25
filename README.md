@@ -133,6 +133,19 @@ Fresh run on 2026-10-24, on the code being submitted:
 - **Exact label** is low partly by design: fact-checkers disagree on false versus misleading for the same pattern (Nepal Factcheck rates foreign footage passed off as Nepal "misleading", AFP rates it "false"). Refuted-or-not is what decides triage.
 - **One unsafe route:** h030, a genuine Onlinekhabar clip of an APF inspector quoting a rescue ("we heard cries for help"), was dismissed as "not a checkable claim", so a true post never reached a checker. No false or misleading post was cleared.
 - **The held-out split is small** (4 items). Read it with the live split below, which is real posts sent to Hamsa.
+
+**Live split: 88 real posts sent to Hamsa as a reader would** (`data/eval/live/`, scored 2026-10-25 with `python -m app.eval.live`). The truth is the label a fact-checker published (or, for posts nobody had checked, the label the checker published on the desk).
+
+| Posts | Items | Fast-track precision | Refuted-or-not | Exact label | To a human |
+|---|---|---|---|---|---|
+| Batches 01–02: rated by fact-checkers, genuine outlet footage, hard cases | 36 | 6/6 | 19/36 | 14/36 | 27/36 |
+| Batches 03–04: mostly posts nobody had fact-checked | 52 | 1/1 | 38/52 | 31/52 | 51/52 |
+| **All** | **88** | **7/7** | **57/88** | **45/88** | **78/88** |
+
+- **Every fast-track on real posts was right (7 of 7).** Fast-track stays rare on purpose: 9 in 10 real posts go to a checker with the evidence attached.
+- **Three rows are unsafe (L08–L10), all from batch 01:** a TikTok bug (fixed 2026-10-22) made blocked posts look like one file, so two merged and one was dismissed. Their stored outputs were rerouted through today's router, not rerun.
+- **On posts nobody had checked, Hamsa's draft agreed with the checker's final label on 31 of 52 (60%)**, and on fake-or-not on 38 of 52 (73%). The checker changed the rest, which is what the desk is for.
+- **Time saved was not measured** with a professional checker; see the latency above.
 - **Time saved was not measured** with a professional checker. Latency is what Hamsa takes before a checker opens the case: under a minute for most posts, with the original footage, sources and a Nepali/English draft already attached.
 
 A labelled set of debunked and genuine posts from Nepal's 2026 disasters (`data/eval/`), labelled with each fact-checker's published rating. We report recycled-media precision and recall, verdict agreement (exact, and refuted-or-not), fast-track precision, the share sent to a human, and latency. A second run hides every fact-check from retrieval, to measure posts nobody has debunked yet.
