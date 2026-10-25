@@ -4,7 +4,7 @@
 - Date: 2026-10-23
 
 ## Context
-The owner sees a bigger product: the public forwards any suspicious post and gets a quick answer, with disasters as only the first topic. Before demo day the question is whether to widen Hamsa now, and what widening would cost later.
+A bigger product is in view: the public forwards any suspicious post and gets a quick answer, with disasters as only the first topic. The question is whether to widen Hamsa now, and what widening would cost later.
 
 ## Options considered
 - **Widen now** to politics, health and other topics. Rejected: every threshold and rule in the router was tuned and checked on disaster posts (the August eval set and 37 live posts). On other topics there is no labelled data, so a wrong fast-track could not even be measured, and a wrong fast-track is the costliest error Hamsa can make.

@@ -225,6 +225,28 @@ def test_submissions_are_rate_limited_per_client(client: TestClient) -> None:
     assert codes == [202] * 10 + [429]
 
 
+def test_readers_behind_the_tunnel_get_their_own_limit(client: TestClient) -> None:
+    tunnel = TestClient(client.app, client=("127.0.0.1", 50000))
+
+    def send(reader: str) -> int:
+        return tunnel.post(
+            "/cases", data={"text": "claim"}, headers={"CF-Connecting-IP": reader}
+        ).status_code
+
+    assert [send("203.0.113.7") for _ in range(11)][-1] == 429
+    assert send("198.51.100.2") == 202  # another reader is not held back by the first
+
+
+def test_a_forged_tunnel_header_is_ignored_off_the_host(client: TestClient) -> None:
+    codes = [
+        client.post(
+            "/cases", data={"text": "claim"}, headers={"CF-Connecting-IP": f"203.0.113.{i}"}
+        ).status_code
+        for i in range(11)
+    ]
+    assert codes == [202] * 10 + [429]
+
+
 def test_archive_original_is_served_only_for_a_match_inside_data(
     client: TestClient, db: Database, tmp_path: Path
 ) -> None:

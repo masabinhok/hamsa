@@ -1,8 +1,20 @@
 # Hamsa (हंस)
 
+**An open-source fact-check triage desk for Nepali disaster misinformation, running entirely on open-weight AI.**
+
+[![ci](https://github.com/masabinhok/hamsa/actions/workflows/ci.yml/badge.svg)](https://github.com/masabinhok/hamsa/actions/workflows/ci.yml) ![licence MIT](https://img.shields.io/badge/licence-MIT-2d7656) ![open-weight models only](https://img.shields.io/badge/models-open--weight%20only-16323b)
+
 *In our old stories, the hamsa (swan) can drink the milk from a mixture of milk and water and leave the water behind (नीर-क्षीर विवेक). Hamsa does the same for misinformation: it separates what's true from what's false.*
 
-**An open-source fact-check triage desk for Nepali disaster misinformation, running entirely on open-weight AI.**
+A reader sends a suspicious post's link on the web, Telegram or Messenger. Within a minute a fact-checker has the claim, the original footage beside the post, cited sources in Nepali and English, and a drafted verdict. A person publishes it with one click, and Hamsa remembers it, so the next copy of the same fake is caught instantly. Hamsa never publishes on its own.
+
+**Results on real posts:** every fast-track was right (8/8 on the tuning set, 7/7 on 88 real posts sent to Hamsa), recycled-media calls were 9/9 precise, and a case reaches the desk in about 46 seconds (median). Details and failures in [Evaluation](#evaluation).
+
+**Demo video:** [the recorded walkthrough](https://drive.google.com/drive/folders/1RDetMOLONfA31d0GcjjHWeoHQCnC6Wf3), from a post sent on the web to a published verdict and the instant catch of a repeat.
+
+| The public site | A verdict as an article |
+|---|---|
+| ![The home page: send a post, and recently checked posts as news cards](docs/screens/home.png) | ![A verdict page: headline, lead video, Nepali reading text, English, sources](docs/screens/verdict-article.png) |
 
 ## The problem
 
@@ -14,11 +26,11 @@ Verification is slow because every claim repeats the same manual steps: figure o
 
 A fact-checker (or a citizen, through a Telegram or Messenger bot) submits a suspicious post, image, or video. Hamsa then:
 
-1. **Extracts the claim.** Qwen3-VL reads the post and its frames and outputs structured JSON: claim, place, date claimed, numbers, and any watermarks or usernames visible in the frames.
-2. **Checks whether the media is recycled.** Each keyframe is fingerprinted three ways and matched against Hamsa's archive of footage with a known origin. A perceptual hash (pHash) catches re-encodes, resizes and light crops. A SigLIP embedding catches the same scene under captions, overlays and heavier edits. ORB keypoints then prove geometrically that two frames are the same shot, not just a similar river. Mirrored frames are checked too.
-3. **Retrieves evidence.** bge-m3 cross-lingual search (Nepali ↔ English) over trusted news and official sources, plus fact-checks published abroad (AFP, Boom, Alt News and others) through Google's ClaimReview search when a key is set.
-4. **Drafts a verdict.** gpt-oss-120b reasons over the evidence and returns a verdict, a confidence score, and citations as JSON.
-5. **Routes the case.** The router acts on the AI's outputs: it auto-merges duplicate claims, fast-tracks high-confidence recycled media, sends ambiguous cases to a human checker with side-by-side evidence, and queues new claims for investigation.
+1. **Extracts the claim.** Qwen3-VL reads the post and its frames and returns JSON: claim, place, date, numbers, and any visible watermarks or usernames.
+2. **Checks whether the media is recycled.** Each keyframe, and its mirror image, is matched against an archive of footage with a known origin: pHash for re-encodes and crops, SigLIP for the same scene under captions and overlays, and ORB keypoints to prove it is the same shot, not just a similar river.
+3. **Retrieves evidence.** Cross-lingual search (Nepali ↔ English) over trusted news, fact-checks published abroad (ClaimReview, when a key is set), the open web (self-hosted SearXNG), and what the platform shows on the post, such as X's Community Note or TikTok's "AI-generated" label.
+4. **Drafts a verdict.** gpt-oss-120b returns a label, a confidence score and cited passages as JSON.
+5. **Routes the case.** Fixed rules merge duplicates, fast-track high-confidence recycled media, send ambiguous cases to a checker with side-by-side evidence, and queue new claims for investigation.
 6. **Keeps a human in charge.** Nothing is published without a checker's one-click approval.
 
 **It gets better with use.** Every verdict a checker publishes (true, false or misleading) is fingerprinted into the archive, and so is the original footage a checker finds by hand with the desk's Lens, Yandex and TinEye buttons. The next copy of that footage, even re-encoded, cropped or re-captioned, is recognised without anyone searching. An exact repeat (same link, post or file) is answered at once with the published verdict. Hamsa remembers; it does not retrain itself, so every decision stays auditable.
@@ -32,32 +44,37 @@ A fact-checker (or a citizen, through a Telegram or Messenger bot) submits a sus
 ## Architecture
 
 ```
- Submission (web form / Telegram / Messenger)
+ Submission (web form / Telegram / Messenger), a link or files
             │
             ▼
- ┌──────────────────────┐   keyframes (PyAV scene detect)
- │  Ingest & normalise  │──────────────────────────────┐
- └──────────┬───────────┘                              │
-            ▼                                          ▼
- ┌──────────────────────┐              ┌─────────────────────────────┐
- │ Claim extraction     │              │ Media match                 │
- │ Qwen3-VL-8B → JSON   │              │ pHash + SigLIP → Qdrant     │
- └──────────┬───────────┘              └──────────────┬──────────────┘
-            ▼                                         │
- ┌──────────────────────┐                             │
- │ Evidence retrieval   │  bge-m3 over trusted news   │
- └──────────┬───────────┘  (RSS + archive, Qdrant)    │
-            ▼                                         │
- ┌──────────────────────┐                             │
- │ Verdict reasoning    │◄────────────────────────────┘
+ ┌──────────────────────┐   repeat link / post id / file? ──► merge, answer at once
+ │  Ingest & normalise  │   yt-dlp download, keyframes (PyAV scene detect)
+ └──────────┬───────────┘
+            ▼
+ ┌──────────────────────┐              ┌──────────────────────────────────┐
+ │ Claim extraction     │              │ Media match against the archive  │
+ │ Qwen3-VL-8B → JSON   │              │ pHash + SigLIP + ORB → Qdrant    │
+ └──────────┬───────────┘              └──────────────────┬───────────────┘
+            ▼                                             │
+ ┌──────────────────────────────────────┐                 │
+ │ Evidence                             │                 │
+ │ bge-m3 over news + fact-checks,      │                 │
+ │ ClaimReview, web (SearXNG),          │                 │
+ │ the post's own X note / TikTok label │                 │
+ └──────────┬───────────────────────────┘                 │
+            ▼                                             │
+ ┌──────────────────────┐                                 │
+ │ Verdict reasoning    │◄────────────────────────────────┘
  │ gpt-oss-120b (Groq)  │  fallback: local Qwen3-VL-8B
  └──────────┬───────────┘
             ▼
- ┌──────────────────────┐   merge dup │ fast-track │ human desk │ investigate
- │ Router               │──────────────────────────────────────────────────►
+ ┌──────────────────────┐   merge │ fast-track │ human review │ investigate │ dismiss
+ │ Router (fixed rules) │──────────────────────────────────────────────────►
  └──────────┬───────────┘
             ▼
-   Checker desk UI → one-click approve → published verdict
+   Checker desk → publish, edit or reject → reader told on their channel
+            │
+            └─► published footage is fingerprinted back into the archive (memory)
 ```
 
 Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and their trade-offs: [`docs/adr/`](docs/adr/).
@@ -71,15 +88,20 @@ Detailed design: [`docs/architecture.md`](docs/architecture.md). Decisions and t
 | Text embeddings | bge-m3 | Open (MIT) |
 | Image embeddings | SigLIP 2 base | Open (Apache 2.0) |
 | Near-duplicate hashing | imagehash (pHash) | Open source |
+| Geometric match | OpenCV ORB keypoints + RANSAC | Open source |
 | Vector DB | Qdrant (Docker) | Open source |
-| Backend | Python, FastAPI | Open source |
-| Frontend | Next.js | Open source |
+| Web search | SearXNG, self-hosted | Open source |
+| Link download | yt-dlp | Open source |
+| Case store and job queue | SQLite (WAL), one worker | Open source |
+| Backend | Python, FastAPI, Pydantic | Open source |
+| Frontend | Next.js, React | Open source |
+| Chat intake | Telegram Bot API, Messenger webhook | Platform APIs |
 
 **No proprietary AI APIs are used anywhere in the pipeline.** The Frogtoberfest organisers confirmed that a hosted open-weight model (gpt-oss on Groq) is allowed. Without a Groq key, every call runs locally.
 
 ## AI usage disclosure
 
-Every model call in Hamsa, and the code that acts on its output.
+Every model call in Hamsa, and the code that acts on its output. Each one drives the router or the desk; none only decorates the screen.
 
 | AI step | Model | Where the output is consumed |
 |---|---|---|
@@ -106,17 +128,20 @@ ollama pull qwen3-vl:8b-instruct && ollama pull bge-m3
 cd backend && uv sync
 uv run python -m app.corpus fetch             # trusted articles, ~1 min
 uv run python -m app.corpus index             # embed into Qdrant, ~15 min on the GPU
-uv run python -m app.corpus watch             # keep it current: new articles every 15 min
 uv run python -m app.archive                  # rebuilds the media archive index (see below)
-
-uv run python -m app.pipeline post.mp4 --text "caption"   # one post, end to end
 
 uv run uvicorn --factory app.api.main:default_app         # API on :8000
 uv run python -m app.worker                               # in a second terminal
-uv run python -m app.telegram                             # optional: the Telegram bot (TELEGRAM_BOT_TOKEN)
-uv run python -m app.messenger                            # optional: the Messenger bot (docs/install.md)
-
 cd ../frontend && npm install && npm run dev              # checker desk on :3000
+```
+
+Optional, from `backend/`:
+
+```bash
+uv run python -m app.pipeline post.mp4 --text "caption"   # one post end to end, no API needed
+uv run python -m app.corpus watch                         # keep the corpus current: new articles every 15 min
+uv run python -m app.telegram                             # the Telegram bot (TELEGRAM_BOT_TOKEN)
+uv run python -m app.messenger                            # the Messenger bot (docs/install.md)
 ```
 
 `app.archive` rebuilds the archive index from the clips in `data/archive/media/` and the eval originals. Those videos are other people's posts, so they are not in the repository: on a fresh clone the archive starts empty and grows from published verdicts (ADR 0011, 0014), or add clips with `python -m app.archive add <url>`. A rebuild re-reads every clip in `data/archive/manifest.csv`, learned ones included, so on a running desk it is safe, only slow.
@@ -127,7 +152,9 @@ Submit a link with `curl -F "url=https://www.facebook.com/reel/..." localhost:80
 
 ## Evaluation
 
-**Fast-track precision 8/8 on the tuning set, and 0 false posts cleared. The rest arrive on the desk drafted, with cited evidence.** Hamsa is deliberately conservative: it publishes nothing by itself, and 80% of posts go to a checker. The product is the evidence pack and the draft, not an automatic verdict.
+A labelled set of debunked and genuine posts from Nepal's 2026 disasters (`data/eval/`), labelled with each fact-checker's published rating. We report recycled-media precision and recall, verdict agreement (exact, and refuted-or-not), fast-track precision, the share sent to a human, and latency. A second run hides every fact-check from retrieval, to measure posts nobody has debunked yet.
+
+Hamsa is deliberately conservative: it publishes nothing by itself, and most posts reach a checker drafted, with cited evidence. **The product is the evidence pack and the draft, not an automatic verdict.**
 
 Fresh run on 2026-10-24, on the code being submitted:
 
@@ -148,13 +175,10 @@ Fresh run on 2026-10-24, on the code being submitted:
 | Batches 03–04: mostly posts nobody had fact-checked | 52 | 1/1 | 38/52 | 31/52 | 51/52 |
 | **All** | **88** | **7/7** | **57/88** | **45/88** | **78/88** |
 
-- **Every fast-track on real posts was right (7 of 7).** Fast-track stays rare on purpose: 9 in 10 real posts go to a checker with the evidence attached.
+- **Fast-track stays rare on purpose:** 9 in 10 real posts go to a checker with the evidence attached.
 - **Three rows are unsafe (L08–L10), all from batch 01:** a TikTok bug (fixed 2026-10-22) made blocked posts look like one file, so two merged and one was dismissed. Their stored outputs were rerouted through today's router, not rerun.
 - **On posts nobody had checked, Hamsa's draft agreed with the checker's final label on 31 of 52 (60%)**, and on fake-or-not on 38 of 52 (73%). The checker changed the rest, which is what the desk is for.
-- **Time saved was not measured** with a professional checker; see the latency above.
 - **Time saved was not measured** with a professional checker. Latency is what Hamsa takes before a checker opens the case: under a minute for most posts, with the original footage, sources and a Nepali/English draft already attached.
-
-A labelled set of debunked and genuine posts from Nepal's 2026 disasters (`data/eval/`), labelled with each fact-checker's published rating. We report recycled-media precision and recall, verdict agreement (exact, and refuted-or-not), fast-track precision, the share sent to a human, and latency. A second run hides every fact-check from retrieval, to measure posts nobody has debunked yet.
 
 ```bash
 cd backend
@@ -173,7 +197,20 @@ Stage outputs are cached in `data/eval/runs/`, so rescoring after a threshold ch
 - Private, deleted or age-restricted posts can't be fetched from their link; the sender is asked for the photo or video, on Telegram or the report page, and it joins the same report.
 - Reposts letterboxed with a blurred copy of the video (common on TikTok) are not yet matched; black bars, crops, mirroring, captions, and screenshots are ([measurements](docs/architecture.md#33-media-match-phash--siglip-cpu)).
 - Nepali OCR on low-quality video frames is imperfect.
+- The reasoning model runs on Groq's free tier (about two verdicts a minute); a burst falls back to the local model, whose drafts always go to a checker. Offline mode works but never fast-tracks.
+- X's Community Note is read from an undocumented public endpoint; if X changes it, posts simply get no note.
+- No desk has used Hamsa in production yet; the evaluation's own limits (a 4-post held-out split, time saved not measured) are in [Evaluation](#evaluation).
+- No WhatsApp intake (Telegram, Messenger and the website only), and Messenger can only reply within 24 hours of the reader's last message.
 - Future work: topics beyond disasters (a corpus filter, prompt wording and a labelled set per topic, [ADR 0015](docs/adr/0015-disaster-scope-and-what-widening-it-takes.md)), a browser extension for newsrooms, more languages (Maithili, Bhojpuri), and a public verdict feed.
+
+## Documentation
+
+| Read | For |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | How each stage works, the router's rules, failure modes, resource budget |
+| [docs/adr/](docs/adr/) | The 17 decisions, each with the alternative that was rejected |
+| [docs/install.md](docs/install.md) | Setting Hamsa up for a fact-checking desk |
+| [docs/data-collection.md](docs/data-collection.md) | How the evaluation set was built and labelled |
 
 ## Licence
 

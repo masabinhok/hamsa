@@ -4,13 +4,13 @@
 - Date: 2026-10-24
 
 ## Context
-Media matching only searches Hamsa's own archive: a few dozen seed clips plus what checkers have published since (ADR 0011, ADR 0014). The owner asked how that limit is overcome when Hamsa grows past one newsroom, and whether the answer is to download every video in advance or to search the web for each post.
+Media matching only searches Hamsa's own archive: a few dozen seed clips plus what checkers have published since (ADR 0011, ADR 0014). The question is how that limit is overcome when Hamsa grows past one newsroom, and whether the answer is to download every video in advance or to search the web for each post.
 
 The archive does not hold videos. For each keyframe it holds three fingerprints (`ArchiveIndex.add` in `backend/app/pipeline/media_match.py`): a 64-bit pHash, a SigLIP 2 vector and ORB keypoints. Measured on 2026-10-24, 325 keyframes take 32 MB in Qdrant, about 100 KB each and mostly ORB keypoints.
 
 ## Options considered
 - **Download all disaster media in advance.** Rejected: unbounded storage, other people's videos on our disks, and it still misses what goes viral next (ADR 0011).
-- **Automatic online reverse search for every post.** Rejected by the owner on 2026-10-24: there is no free API. Google Lens has no official API, TinEye charges per search, and Bing's search APIs were retired in 2025. Searching by the post's words recovered 0 of 9 originals (ADR 0011). Checkers keep one-click Lens, Yandex and TinEye from the desk, and Hamsa remembers what they find.
+- **Automatic online reverse search for every post.** Rejected on 2026-10-24: there is no free API. Google Lens has no official API, TinEye charges per search, and Bing's search APIs were retired in 2025. Searching by the post's words recovered 0 of 9 originals (ADR 0011). Checkers keep one-click Lens, Yandex and TinEye from the desk, and Hamsa remembers what they find.
 - **Share fingerprints and labels between desks, and seed from free sources.** Chosen.
 
 ## Decision

@@ -1,7 +1,7 @@
 """Evidence from the open web, searched per case through self-hosted SearXNG.
 
 The trusted corpus holds a few Nepali outlets, so a claim about tourists, or an event
-those outlets did not cover, found nothing (ISSUES.md, 2026-10-22). Web pages are
+those outlets did not cover, found nothing (field test, 2026-10-22). Web pages are
 untrusted: they are shown to the verdict model and the checker as `web` evidence, and
 the router never counts them as independent sources for a fast-track.
 """
