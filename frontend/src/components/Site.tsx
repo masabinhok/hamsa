@@ -347,12 +347,34 @@ export function Mine({ selected = null }: { selected?: string | null }) {
 // "more checked posts" list under an article.
 export function Recent({ selected = null, compact = false }: { selected?: string | null; compact?: boolean }) {
   const [recent, setRecent] = useState<PublicCase[] | null>(null);
+  const [next, setNext] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    site.verdicts().then(setRecent, () => setRecent([]));
+    site.verdicts().then(
+      (page) => {
+        setRecent(page.items);
+        setNext(page.next);
+      },
+      () => setRecent([]),
+    );
   }, []);
 
-  const shown = (recent ?? []).filter((item) => item.verdict && item.id !== selected).slice(0, compact ? 6 : 13);
+  async function loadMore() {
+    if (!next) return;
+    setLoadingMore(true);
+    try {
+      const page = await site.verdicts(next);
+      setRecent((shown) => [...(shown ?? []), ...page.items]);
+      setNext(page.next);
+    } catch {
+      // The button stays, so the reader can try again.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const shown = (recent ?? []).filter((item) => item.verdict && item.id !== selected).slice(0, compact ? 6 : undefined);
   const [lead, ...rest] = compact ? [undefined, ...shown] : shown;
   return (
     <section id="checked" className={styles.feed} aria-labelledby="recent">
@@ -408,6 +430,26 @@ export function Recent({ selected = null, compact = false }: { selected?: string
           ) : null,
         )}
       </ul>
+      {loadingMore && (
+        <div role="status" aria-label="लोड हुँदैछ · Loading">
+          <div className={styles.skeleton} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      )}
+      {!compact && recent !== null && shown.length > 0 && (
+        next ? (
+          <button type="button" className={styles.more} onClick={loadMore} disabled={loadingMore}>
+            थप हेर्नुहोस् · <span lang="en">Load more</span>
+          </button>
+        ) : (
+          <p className={styles.quiet}>
+            <Both ne="सबै जाँचिएका पोस्ट देखाइयो।" en="That's every checked post." />
+          </p>
+        )
+      )}
     </section>
   );
 }

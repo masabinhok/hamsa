@@ -166,7 +166,7 @@ def test_publish_with_one_click_uses_the_draft_and_cites_sources(
     assert public["verdict"]["sources"] == [
         {"name": "Nepal Factcheck", "url": "https://example.org/debunk", "stance": "refutes"}
     ]
-    assert [v["id"] for v in client.get("/verdicts").json()] == ["c1"]
+    assert [v["id"] for v in client.get("/verdicts").json()["items"]] == ["c1"]
 
 
 def test_checker_can_override_the_label(client: TestClient, db: Database) -> None:
@@ -511,3 +511,54 @@ def test_a_repeat_shows_the_verdict_it_was_merged_into(client: TestClient, db: D
     assert repeat["merged_into"] == "c1"
     assert repeat["verdict"]["label"] == client.get("/cases/c1").json()["verdict"]["label"]
     assert repeat["verdict"]["media"] == []  # served under c1, which the page links to
+
+
+def publish_all(client: TestClient, db: Database, ids: list[str]) -> None:
+    for case_id in ids:
+        add_routed_case(db, case_id)
+        body = {"action": "publish", "checker": "sita"}
+        assert client.post(f"/desk/cases/{case_id}/decision", headers=AUTH, json=body).is_success
+
+
+def pages(client: TestClient, limit: int) -> list[list[str]]:
+    seen: list[list[str]] = []
+    cursor: str | None = None
+    while True:
+        params: dict[str, str | int] = {"limit": limit} | ({"before": cursor} if cursor else {})
+        page = client.get("/verdicts", params=params).json()
+        seen.append([item["id"] for item in page["items"]])
+        cursor = page["next"]
+        if cursor is None:
+            return seen
+
+
+def test_verdicts_come_a_page_at_a_time_newest_first(client: TestClient, db: Database) -> None:
+    publish_all(client, db, ["c1", "c2", "c3", "c4", "c5"])
+    assert pages(client, 2) == [["c5", "c4"], ["c3", "c2"], ["c1"]]
+    assert client.get("/verdicts").json()["total"] == 5
+
+
+def test_verdicts_published_in_the_same_instant_are_neither_skipped_nor_repeated(
+    client: TestClient, db: Database
+) -> None:
+    publish_all(client, db, ["c1", "c2", "c3"])
+    with db.session.begin() as session:
+        moment = session.get_one(Case, "c1").updated_at
+        for case_id in ("c1", "c2", "c3"):
+            session.get_one(Case, case_id).updated_at = moment
+    assert sorted(i for page in pages(client, 1) for i in page) == ["c1", "c2", "c3"]
+
+
+def test_a_verdict_published_between_pages_does_not_repeat_one(
+    client: TestClient, db: Database
+) -> None:
+    publish_all(client, db, ["c1", "c2", "c3"])
+    first = client.get("/verdicts", params={"limit": 2}).json()
+    publish_all(client, db, ["c4"])
+    second = client.get("/verdicts", params={"limit": 2, "before": first["next"]}).json()
+    assert [i["id"] for i in first["items"]] + [i["id"] for i in second["items"]] == [
+        "c3",
+        "c2",
+        "c1",
+    ]
+    assert client.get("/verdicts", params={"before": "not a cursor"}).status_code == 422

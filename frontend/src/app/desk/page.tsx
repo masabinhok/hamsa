@@ -23,7 +23,7 @@ export default function DeskHome() {
   const [published, setPublished] = useState<PublicCase[] | null>(null);
 
   useEffect(() => {
-    site.verdicts().then(setPublished, () => setPublished([]));
+    site.verdicts().then((page) => setPublished(page.items), () => setPublished([]));
   }, []);
 
   const queue = items ?? [];

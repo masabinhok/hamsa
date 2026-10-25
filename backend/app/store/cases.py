@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel
-from sqlalchemy import Engine, bindparam, create_engine, delete, event, select, text
+from sqlalchemy import Engine, bindparam, create_engine, delete, event, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.pipeline.contracts import (
@@ -233,14 +233,23 @@ def desk_queue(session: Session, route: Route | None = None) -> list[Case]:
     return sorted(cases, key=lambda c: order.index(Route(c.route)) if c.route else len(order))
 
 
-def published(session: Session, limit: int = 50) -> list[Case]:
-    query = (
-        select(Case)
-        .where(Case.status == CaseStatus.PUBLISHED)
-        .order_by(Case.updated_at.desc())
-        .limit(limit)
-    )
+def published(
+    session: Session, limit: int = 50, before: tuple[datetime, str] | None = None
+) -> list[Case]:
+    """Newest first. `before` is the last (time, id) already shown: ties on time are broken by
+    id, so a page never skips or repeats a verdict published in the same instant."""
+    query = select(Case).where(Case.status == CaseStatus.PUBLISHED)
+    if before is not None:
+        at, case_id = before
+        query = query.where(
+            (Case.updated_at < at) | ((Case.updated_at == at) & (Case.id < case_id))
+        )
+    query = query.order_by(Case.updated_at.desc(), Case.id.desc()).limit(limit)
     return list(session.scalars(query))
+
+
+def published_count(session: Session) -> int:
+    return session.scalar(select(func.count()).where(Case.status == CaseStatus.PUBLISHED)) or 0
 
 
 OPEN = (CaseStatus.RECEIVED, CaseStatus.PROCESSING, CaseStatus.ROUTED)

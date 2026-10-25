@@ -9,6 +9,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -21,6 +22,7 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -47,6 +49,7 @@ from app.api.schemas import (
     Source,
     TranslateRequest,
     TranslateResponse,
+    VerdictPage,
 )
 from app.checkers import signed_in
 from app.config import REPO_ROOT, get_settings
@@ -69,6 +72,7 @@ from app.store.cases import (
     outputs_from_json,
     publish,
     published,
+    published_count,
     reject,
     reopen,
     save_media,
@@ -264,8 +268,27 @@ def public_media(request: Request, session: DbSession, case_id: str, name: str) 
 
 
 @public.get("/verdicts")
-def verdicts(session: DbSession) -> list[PublicCase]:
-    return [public_view(session, c) for c in published(session)]
+def verdicts(
+    session: DbSession,
+    before: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 12,
+) -> VerdictPage:
+    """Published verdicts, newest first, a page at a time ("Load more" on the site)."""
+    cursor = None
+    if before is not None:
+        at, _, case_id = before.rpartition("~")
+        try:
+            cursor = (datetime.fromisoformat(at), case_id)
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "bad cursor") from error
+    rows = published(session, limit + 1, cursor)  # one extra says whether more remain
+    page = rows[:limit]
+    last = page[-1] if page and len(rows) > limit else None
+    return VerdictPage(
+        items=[public_view(session, c) for c in page],
+        next=f"{last.updated_at.isoformat()}~{last.id}" if last else None,
+        total=published_count(session),
+    )
 
 
 @desk.get("/me")
