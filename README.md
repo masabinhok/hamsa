@@ -10,6 +10,8 @@ A reader sends a suspicious post's link on the web, Telegram or Messenger. Withi
 
 **Results on real posts:** every fast-track was right (8/8 on the tuning set, 7/7 on 88 real posts sent to Hamsa), recycled-media calls were 9/9 precise, and a case reaches the desk in about 46 seconds (median). Details and failures in [Evaluation](#evaluation).
 
+**Demo video:** [the recorded walkthrough](https://drive.google.com/drive/folders/1RDetMOLONfA31d0GcjjHWeoHQCnC6Wf3), from a post sent on the web to a published verdict and the instant catch of a repeat.
+
 | The public site | A verdict as an article |
 |---|---|
 | ![The home page: send a post, and recently checked posts as news cards](docs/screens/home.png) | ![A verdict page: headline, lead video, Nepali reading text, English, sources](docs/screens/verdict-article.png) |
