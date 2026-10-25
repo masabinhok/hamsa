@@ -14,8 +14,6 @@ A reader sends a suspicious post's link on the web, Telegram or Messenger. Withi
 |---|---|
 | ![The home page: send a post, and recently checked posts as news cards](docs/screens/home.png) | ![A verdict page: headline, lead video, Nepali reading text, English, sources](docs/screens/verdict-article.png) |
 
-**See it working:** the [demo script](docs/demo.md) walks through one fake, its repost and a genuine post in about six minutes.
-
 ## The problem
 
 After the August 26, 2026 flash floods in Nepal (900+ dead, thousands missing), social media filled with recycled and fabricated footage: clips from Uttarakhand and Alaska passed off as Nepal, fake "before/after" photos, and synthetic bridge-collapse videos. The Nepal Press Council's reporting portal received 101 complaints within days, and fact-checkers traced each one **by hand**.
@@ -210,9 +208,7 @@ Stage outputs are cached in `data/eval/runs/`, so rescoring after a threshold ch
 | [docs/architecture.md](docs/architecture.md) | How each stage works, the router's rules, failure modes, resource budget |
 | [docs/adr/](docs/adr/) | The 17 decisions, each with the alternative that was rejected |
 | [docs/install.md](docs/install.md) | Setting Hamsa up for a fact-checking desk |
-| [docs/demo.md](docs/demo.md) | The six-minute demo script |
 | [docs/data-collection.md](docs/data-collection.md) | How the evaluation set was built and labelled |
-| [HANDOVER.md](HANDOVER.md) | State of the project, measured numbers, known limits |
 
 ## Licence
 

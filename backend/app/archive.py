@@ -187,7 +187,7 @@ def _same_url(a: str, b: str) -> bool:
 def eval_post_urls() -> list[str]:
     """Posts in the eval set, verified or drafted: they must never enter the archive."""
     urls = [str(i.post_url) for i in load_items(EVAL_DIR / "items.csv") if i.post_url]
-    drafts = EVAL_DIR / "drafts.csv"  # the owner's unverified rows, gitignored
+    drafts = EVAL_DIR / "drafts.csv"  # unverified rows, gitignored
     if drafts.is_file():
         with drafts.open(newline="", encoding="utf-8") as handle:
             urls += [r["post_url"] for r in csv.DictReader(handle) if r.get("post_url")]
@@ -261,7 +261,7 @@ def eval_overlaps(
     archive_hashes: dict[str, list[list[float]]], eval_hashes: dict[str, list[list[float]]]
 ) -> list[str]:
     """Manifest clips that strongly match an eval post. Not an error: genuine footage of
-    an event can be archived before its reposts arrive. The owner decides per pair."""
+    an event can be archived before its reposts arrive. A person decides per pair."""
     limit = DEFAULT_THRESHOLDS.phash_max_distance
     found: list[str] = []
     for archive_id, hashes in archive_hashes.items():

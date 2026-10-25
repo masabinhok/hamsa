@@ -21,3 +21,14 @@ graphify-out/
 
 # A third-party design skill kept locally, not part of Hamsa
 SKILL.md
+
+# Working notes, agent instructions and local tooling, kept off the public repo
+/HANDOVER.md
+/ISSUES.md
+CLAUDE.md
+AGENTS.md
+/docs/demo.md
+/data/eval/sources.md
+/brag.jpg
+/.agents/
+/skills-lock.json

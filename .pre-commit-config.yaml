@@ -32,7 +32,7 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-      # The owner wants no co-author or tool attribution in history.
+      # Commits carry no co-author or tool attribution trailers.
       - id: no-co-author
         name: no co-author trailer
         entry: bash -c '! grep -qi "^co-authored-by:" "$1"' --
