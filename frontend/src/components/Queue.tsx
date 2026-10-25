@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import type { DeskSummary, Route } from "@/lib/api";
-import { useQueue } from "@/lib/queue";
+import type { DeskSummary, Label, Route } from "@/lib/api";
+import { matchesFilter, useLabelFilter, useQueue } from "@/lib/queue";
 import { labelName, reasonTag, routeGroup, routeOrder, timeAgo } from "@/lib/words";
 import styles from "./Queue.module.css";
 
@@ -12,7 +12,9 @@ export function Queue() {
   const { items, error } = useQueue();
   const params = useParams<{ id?: string }>();
   const router = useRouter();
-  const ordered = useMemo(() => items ?? [], [items]);
+  const pathname = usePathname();
+  const { label, query } = useLabelFilter();
+  const ordered = useMemo(() => (items ?? []).filter((item) => matchesFilter(item, label)), [items, label]);
   // Set once the first queue has rendered: anything mounting after that arrived meanwhile.
   const [loaded, setLoaded] = useState(false);
 
@@ -30,11 +32,11 @@ export function Queue() {
       if (event.key !== "j" && event.key !== "k") return;
       const index = ordered.findIndex((item) => item.id === params.id);
       const next = ordered[index + (event.key === "j" ? 1 : -1)] ?? ordered[0];
-      if (next) router.push(`/desk/${next.id}`);
+      if (next) router.push(`/desk/${next.id}${query}`);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, params.id, router]);
+  }, [ordered, params.id, router, query]);
 
   const groups = routeOrder
     .map((route) => [route, ordered.filter((item) => item.route === route)] as const)
@@ -44,9 +46,32 @@ export function Queue() {
     <nav className={styles.queue} aria-label="Case queue">
       {error && <p className={styles.error}>{error}</p>}
       {items === null && !error && <p className={styles.quiet}>Loading the queue…</p>}
+      {items !== null && items.length > 0 && (
+        <div className={styles.filters} role="group" aria-label="Show drafts labelled">
+          <FilterChip href={pathname} active={label === null} name="All" count={items.length} />
+          {(Object.keys(labelName) as Label[]).map((key) => (
+            <FilterChip
+              key={key}
+              href={`${pathname}?label=${key}`}
+              active={label === key}
+              name={labelName[key].en}
+              count={items.filter((item) => item.proposed_label === key).length}
+              tone={key}
+            />
+          ))}
+        </div>
+      )}
       {items?.length === 0 && (
         <p className={styles.quiet}>
           Nothing waiting. New submissions appear here as soon as the pipeline routes them.
+        </p>
+      )}
+      {label && items !== null && items.length > 0 && ordered.length === 0 && (
+        <p className={styles.quiet}>
+          No {labelName[label].en.toLowerCase()} drafts waiting.{" "}
+          <Link href={pathname} replace scroll={false}>
+            Show all
+          </Link>
         </p>
       )}
       {groups.map(([route, group]) => (
@@ -62,6 +87,7 @@ export function Queue() {
                 route={route}
                 current={item.id === params.id}
                 arrived={loaded}
+                query={query}
               />
             ))}
           </ol>
@@ -74,16 +100,45 @@ export function Queue() {
   );
 }
 
+function FilterChip({
+  href,
+  active,
+  name,
+  count,
+  tone,
+}: {
+  href: string;
+  active: boolean;
+  name: string;
+  count: number;
+  tone?: Label;
+}) {
+  return (
+    <Link
+      href={href}
+      replace
+      scroll={false}
+      className={styles.chip}
+      aria-current={active ? "true" : undefined}
+      data-label={tone}
+    >
+      {name} <span className={styles.count}>{count}</span>
+    </Link>
+  );
+}
+
 function QueueItem({
   item,
   route,
   current,
   arrived,
+  query,
 }: {
   item: DeskSummary;
   route: Route;
   current: boolean;
   arrived: boolean;
+  query: string;
 }) {
   const title = item.claim_en ?? item.text ?? "Media without text";
   // Frozen at mount: flipping it later would restart the animation on every item.
@@ -91,7 +146,7 @@ function QueueItem({
   return (
     <li className={styles.row} data-arrived={fresh ? "" : undefined}>
       <Link
-        href={`/desk/${item.id}`}
+        href={`/desk/${item.id}${query}`}
         className={styles.item}
         aria-current={current ? "page" : undefined}
         data-route={route}

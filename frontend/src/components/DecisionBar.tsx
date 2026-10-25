@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ApiError, desk, type Decision, type DeskCase, type Label } from "@/lib/api";
-import { useQueue } from "@/lib/queue";
+import { matchesFilter, useLabelFilter, useQueue } from "@/lib/queue";
 import { useChecker } from "@/lib/session";
 import { labelName } from "@/lib/words";
 import styles from "./DecisionBar.module.css";
@@ -13,6 +13,7 @@ const LABELS: Label[] = ["false", "misleading", "true", "unverifiable"];
 export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: (c: DeskCase) => void }) {
   const { token, name } = useChecker();
   const { items, refresh, announce } = useQueue();
+  const { label: filter, query } = useLabelFilter();
   const router = useRouter();
   const draft = found.outputs?.verdict ?? null;
 
@@ -56,8 +57,9 @@ export function DecisionBar({ found, onDecided }: { found: DeskCase; onDecided: 
       await refresh();
       announce(`${done}: ${found.claim_en ?? found.text ?? found.id}`);
       onDecided(updated);
-      const next = items?.find((item) => item.id !== found.id);
-      if (next && decision.action !== "reopen") router.push(`/desk/${next.id}`);
+      // The next case stays inside the checker's filter, e.g. one true draft after another.
+      const next = items?.find((item) => item.id !== found.id && matchesFilter(item, filter));
+      if (next && decision.action !== "reopen") router.push(`/desk/${next.id}${query}`);
     } catch (caught) {
       setFailure(caught instanceof ApiError ? caught.message : "The decision was not saved. Try again.");
     } finally {
