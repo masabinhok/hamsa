@@ -12,26 +12,59 @@
   overflow-y: auto;
 }
 
+/* Stays at the top of the sidebar while the queue scrolls beneath it. */
 .masthead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-4);
   border-bottom: 1px solid var(--rule);
+  background: var(--milk);
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: start;
   font-family: var(--font-read);
   font-weight: 600;
   font-size: var(--step-1);
+  white-space: nowrap;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brandDesk {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  color: var(--silt);
 }
 
 .who {
-  display: flex;
-  gap: var(--space-3);
   font-size: var(--step--1);
   color: var(--silt);
+}
+
+.who strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.deskNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--step--1);
+  color: var(--ink-soft);
+}
+
+.deskNav a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
 }
 
 .signOut {
@@ -48,6 +81,38 @@
   min-width: 0;
 }
 
+/* Purpose C, confirmation: the decision was saved, even though the case on screen changed.
+   Fixed, so it never shifts the layout; it carries no actions, so it never takes a click. */
+.notice {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 10;
+  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-4);
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--milk);
+  box-shadow: 0 4px 16px rgb(22 50 59 / 0.2);
+  pointer-events: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateY(calc(-1 * var(--shift)));
+  transition:
+    opacity var(--dur-micro) var(--ease-in),
+    transform var(--dur-micro) var(--ease-in);
+}
+
+.notice[data-shown] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-short) var(--ease-out),
+    transform var(--dur-short) var(--ease-out);
+}
+
 @media (max-width: 52rem) {
   .desk {
     grid-template-columns: 1fr;
@@ -56,16 +121,195 @@
   .side {
     position: static;
     height: auto;
-    max-height: 40dvh;
+    max-height: 50dvh;
     border-right: 0;
     border-bottom: 1px solid var(--rule);
   }
 }
 
-.empty {
+.overview {
   display: grid;
-  place-items: center;
-  min-height: 60dvh;
+  gap: var(--space-6);
   padding: var(--space-6);
+}
+
+.overviewHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-4);
+}
+
+/* Shaded by urgency in the desk's neutrals: verdict colours stay reserved for verdicts. */
+.tile {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--rule);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.tile:hover {
+  border-color: var(--ink-soft);
+}
+
+.tile[data-route="fast_track"] {
+  border-top-color: var(--ink);
+}
+
+.tile[data-route="human_review"] {
+  border-top-color: var(--ink-soft);
+}
+
+.tile[data-route="investigate"] {
+  border-top-color: var(--glacier);
+}
+
+.tileCount {
+  font-family: var(--font-read);
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileName {
+  font-weight: 600;
+}
+
+.clear {
+  padding: var(--space-4) var(--space-5);
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  color: var(--ink-soft);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--step-0);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.rows {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.row:hover {
+  border-color: var(--ink-soft);
+}
+
+.rowTitle {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+}
+
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--step--1);
   color: var(--silt);
+}
+
+.rowMeta [data-label] {
+  font-weight: 600;
+}
+
+.rowMeta [data-label="false"] { color: var(--false); }
+.rowMeta [data-label="misleading"] { color: var(--misleading); }
+.rowMeta [data-label="true"] { color: var(--true); }
+.rowMeta [data-label="unverifiable"] { color: var(--unverifiable); }
+
+.guide {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 48rem;
+}
+
+.guide summary {
+  cursor: pointer;
+}
+
+.guide[open] summary {
+  margin-bottom: var(--space-4);
+}
+
+.guideTitle {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: var(--step-2);
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding-left: var(--space-5);
+  line-height: 1.6;
+}
+
+.start {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; /* a comfortable target, mouse or touch */
+  padding: var(--space-3) var(--space-5);
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--milk);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.start:focus-visible {
+  outline: 3px solid var(--glacier);
+  outline-offset: 2px;
+}
+
+.quietLine {
+  margin: 0;
+  color: var(--silt);
+  font-size: var(--step--1);
 }

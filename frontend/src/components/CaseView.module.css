@@ -2,20 +2,91 @@
   display: grid;
   grid-template-rows: 1fr auto;
   min-height: 100dvh;
+  /* Purpose B, orientation: j/k swaps a page that looks the same; the entrance says the case
+     changed and which way through the queue. Plays once, on mount; input is never held. */
+  animation: case-enter var(--dur-medium) var(--ease-out);
+}
+
+.case[data-enter="back"] {
+  --enter-from: calc(-1 * var(--shift));
+}
+
+/* A focus target for keyboard users after a decision, not a control: no ring. */
+.case:focus {
+  outline: none;
+}
+
+@keyframes case-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-from, var(--shift)));
+  }
 }
 
 .body {
   display: grid;
   align-content: start;
   gap: var(--space-6);
-  max-width: 52rem;
+  max-width: 92rem;
   padding: var(--space-7) var(--space-6) var(--space-6);
 }
 
+.columns {
+  display: grid;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.column {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+@media (min-width: 75rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.history {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+.history summary {
+  cursor: pointer;
+}
+
 .notice {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
   padding: var(--space-7) var(--space-6);
   color: var(--silt);
   max-width: 40rem;
+}
+
+/* Purpose D, perceived speed: say "loading" only once the wait is noticeable. */
+.waiting {
+  animation: fade-in var(--dur-short) var(--ease-out) var(--dur-medium) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.retry {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* The one bold element: the claim, in its own script. */
@@ -29,7 +100,8 @@
   max-width: 34ch;
   font-family: var(--font-read);
   font-weight: 600;
-  font-size: clamp(1.6rem, 1.1rem + 1.6vw, 2.4rem);
+  /* Big enough to read at a glance, small enough to keep the draft above the fold. */
+  font-size: clamp(1.35rem, 1rem + 1vw, 1.85rem);
   line-height: 1.35;
   text-wrap: balance;
 }
@@ -134,6 +206,28 @@
   border-radius: 4px;
 }
 
+.frameSearch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: 0.875rem;
+}
+
+.frameSearch button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.frameSearch [role="status"] {
+  flex-basis: 100%;
+}
+
 .mediaPlaceholder {
   aspect-ratio: 16 / 9;
   background: var(--milk-deep);
@@ -234,7 +328,7 @@
   margin-bottom: var(--space-4);
 }
 
-.history {
+.events {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -270,4 +364,8 @@
 
 .actor {
   color: var(--silt);
+}
+
+details.match summary {
+  cursor: pointer;
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { desk, type ArchiveHit, type DeskCase, type Passage, type Verdict } from "@/lib/api";
+import { useQueue } from "@/lib/queue";
 import { useChecker } from "@/lib/session";
 import { describeEvent, labelName, sentence } from "@/lib/words";
 import { AuthedMedia } from "./AuthedMedia";
@@ -15,10 +16,23 @@ function lang(text: string): "ne" | "en" {
   return DEVANAGARI.test(text) ? "ne" : "en";
 }
 
+// The case on screen before this one: moving up the queue (k) enters from above, down from below.
+let lastShown: string | null = null;
+
 export function CaseView({ id }: { id: string }) {
   const { token } = useChecker();
+  const { items } = useQueue();
   const [found, setFound] = useState<DeskCase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [direction] = useState(() => {
+    const order = (items ?? []).map((item) => item.id);
+    const [from, to] = [order.indexOf(lastShown ?? ""), order.indexOf(id)];
+    return from !== -1 && to !== -1 && to < from ? "back" : "next";
+  });
+
+  useEffect(() => {
+    lastShown = id;
+  }, [id]);
 
   const load = useCallback(async () => {
     try {
@@ -41,9 +55,19 @@ export function CaseView({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [pending, load]);
 
-  if (error) return <p className={styles.notice}>{error}</p>;
+  if (error) {
+    return (
+      <div className={styles.notice} role="alert">
+        <p>{error}</p>
+        <button type="button" className={styles.retry} onClick={load}>
+          Try again
+        </button>
+      </div>
+    );
+  }
   const current = found;
-  if (!current) return <p className={styles.notice}>Loading the case…</p>;
+  // Shown only if loading outlasts --dur-medium, so a quick load never flashes it.
+  if (!current) return <p className={`${styles.notice} ${styles.waiting}`}>Loading the case…</p>;
   if (pending) {
     return (
       <p className={styles.notice}>
@@ -57,9 +81,19 @@ export function CaseView({ id }: { id: string }) {
   const verdict = outputs?.verdict ?? null;
   const passages = outputs?.evidence?.passages ?? [];
   const hits = outputs?.media_match?.hits ?? [];
+  const strong = hits.filter(isStrong);
+  const weak = hits.filter((hit) => !isStrong(hit)).slice(0, 3);
 
   return (
-    <article className={styles.case}>
+    <article
+      className={styles.case}
+      data-enter={direction}
+      tabIndex={-1}
+      // A decision unmounts the button that had focus; land keyboard users on the new case.
+      ref={(node) => {
+        if (node && document.activeElement === document.body) node.focus({ preventScroll: true });
+      }}
+    >
       <div className={styles.body}>
         <header className={styles.claimBlock}>
           {claim ? (
@@ -87,55 +121,86 @@ export function CaseView({ id }: { id: string }) {
           </p>
         </header>
 
-        <section className={styles.section} aria-labelledby="why">
-          <h2 id="why" className={styles.heading}>
-            Why it is here
-          </h2>
-          <ul className={styles.reasons}>
-            {current.reasons.map((reason) => (
-              <li key={reason}>{sentence(reason)}</li>
-            ))}
-          </ul>
-          {outputs?.failures.map((failure) => (
-            <p key={failure.stage} className={styles.failure}>
-              The {failure.stage.replace("_", " ")} step failed: {failure.error}
-            </p>
-          ))}
-        </section>
+        {/* Left: the post itself. Right: what Hamsa drafted and the sources it relied on,
+            so a checker reads a verdict next to its evidence (stacked on narrow screens). */}
+        <div className={styles.columns}>
+          <div className={styles.column}>
+            {(current.media.length > 0 || hits.length > 0) && (
+              <section className={styles.section} aria-labelledby="media">
+                <h2 id="media" className={styles.heading}>
+                  The post&rsquo;s media
+                </h2>
+                <div className={styles.mediaGrid}>
+                  <div className={styles.mediaColumn}>
+                    {current.media.map((name) => (
+                      <AuthedMedia
+                        key={name}
+                        path={`/desk/cases/${current.id}/media/${encodeURIComponent(name)}`}
+                        alt="Submitted media"
+                        searchable
+                        // Match timestamps index the post's frames; only unambiguous for one file.
+                        start={current.media.length === 1 ? strong[0]?.post_seconds : null}
+                      />
+                    ))}
+                  </div>
+                  <div className={styles.mediaColumn}>
+                    {strong.length === 0 && (
+                      <p className={styles.quiet}>No match in the archive of known footage.</p>
+                    )}
+                    {strong.map((hit) => (
+                      <ArchiveMatch key={hit.archive_id} caseId={current.id} hit={hit} />
+                    ))}
+                    {weak.length > 0 && (
+                      // Similar scenes, not the same footage: worth a glance, not a place in the layout.
+                      <details className={styles.match}>
+                        <summary className={styles.matchTitle}>
+                          {weak.length} look-alike{weak.length === 1 ? "" : "s"}, not the same footage
+                        </summary>
+                        {weak.map((hit) => (
+                          <p key={hit.archive_id} className={styles.quiet}>
+                            {hit.original_context} ({Math.round((hit.cosine ?? 0) * 100)}% similar){" "}
+                            <a href={hit.source_url} target="_blank" rel="noreferrer">
+                              open
+                            </a>
+                          </p>
+                        ))}
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
 
-        {verdict && <DraftVerdict verdict={verdict} />}
+            {claim && <ReadFromPost claim={claim} />}
 
-        {(current.media.length > 0 || hits.length > 0) && (
-          <section className={styles.section} aria-labelledby="media">
-            <h2 id="media" className={styles.heading}>
-              The post&rsquo;s media
-            </h2>
-            <div className={styles.mediaGrid}>
-              <div className={styles.mediaColumn}>
-                {current.media.map((name) => (
-                  <AuthedMedia key={name} caseId={current.id} name={name} />
+          </div>
+          <div className={styles.column}>
+            <section className={styles.section} aria-labelledby="why">
+              <h2 id="why" className={styles.heading}>
+                Why it is here
+              </h2>
+              <ul className={styles.reasons}>
+                {current.reasons.map((reason) => (
+                  <li key={reason}>{sentence(reason)}</li>
                 ))}
-              </div>
-              <div className={styles.mediaColumn}>
-                {hits.length === 0 ? (
-                  <p className={styles.quiet}>No match in the archive of known footage.</p>
-                ) : (
-                  hits.slice(0, 3).map((hit) => <ArchiveMatch key={hit.archive_id} hit={hit} />)
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+              </ul>
+              {outputs?.failures.map((failure) => (
+                <p key={failure.stage} className={styles.failure}>
+                  The {failure.stage.replace("_", " ")} step failed: {failure.error}
+                </p>
+              ))}
+            </section>
 
-        {claim && <ReadFromPost claim={claim} />}
+            {verdict && <DraftVerdict verdict={verdict} />}
 
-        <Evidence passages={passages} verdict={verdict} />
+            <Evidence passages={passages} verdict={verdict} />
 
-        <section className={styles.section} aria-labelledby="history">
-          <h2 id="history" className={styles.heading}>
-            History
-          </h2>
-          <ol className={styles.history}>
+          </div>
+        </div>
+
+        <details className={styles.history}>
+          <summary className={styles.heading}>History</summary>
+          <ol className={styles.events}>
             {current.events.map((event, index) => (
               <li key={index}>
                 <time dateTime={event.at}>{new Date(event.at).toLocaleTimeString("en-GB")}</time>
@@ -151,7 +216,7 @@ export function CaseView({ id }: { id: string }) {
               Processed in {Object.values(current.seconds).reduce((a, b) => a + b, 0).toFixed(1)} s
             </p>
           )}
-        </section>
+        </details>
       </div>
 
       <DecisionBar found={current} onDecided={setFound} />
@@ -176,6 +241,7 @@ function DraftVerdict({ verdict }: { verdict: Verdict }) {
       <p className={styles.rationale} lang="ne">
         {verdict.rationale_ne}
       </p>
+      <Findings verdict={verdict} />
       <p className={styles.quiet}>
         Drafted by {verdict.model}
         {verdict.fallback && ", the local fallback model, because the main model was unavailable"}.
@@ -184,17 +250,75 @@ function DraftVerdict({ verdict }: { verdict: Verdict }) {
   );
 }
 
-function ArchiveMatch({ hit }: { hit: ArchiveHit }) {
-  const origin = hit.archive_label === "prior" ? "Older footage" : "Verified footage of this disaster";
-  const closeness =
-    hit.phash_distance !== null && hit.phash_distance <= 16
-      ? `near-identical frame: ${hit.phash_distance} of 64 fingerprint bits differ`
-      : `visually similar: ${Math.round((hit.cosine ?? 0) * 100)}% similarity`;
+const findingText: Record<string, string> = {
+  shows_claim: "shown to be from this event",
+  elsewhere: "from another place, year, or event",
+  ai_generated: "AI-generated",
+  not_established: "not established",
+  no_media: "none in the post",
+  confirmed: "confirmed",
+  contradicted: "contradicted",
+  not_found: "not found in the evidence",
+  consistent: "consistent with reports from around the post's date",
+  none_claimed: "none claimed",
+};
+
+// What the model found before choosing its label; the router checks one against the other.
+function Findings({ verdict }: { verdict: Verdict }) {
+  const rows: [string, string | null | undefined][] = [
+    ["Footage", verdict.media_finding],
+    ["Event", verdict.event_finding],
+    ["Figures", verdict.number_finding],
+  ];
+  const shown = rows.filter((row): row is [string, string] => Boolean(row[1]));
+  if (shown.length === 0) return null;
+  return (
+    <dl className={styles.facts}>
+      {shown.map(([term, finding]) => (
+        <div key={term} className={styles.fact}>
+          <dt>{term}</dt>
+          <dd>{findingText[finding] ?? finding}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// The limits the router uses for a strong match (backend/app/router/route.py Thresholds).
+const MIN_INLIERS = 30;
+const MAX_PHASH = 10;
+
+const MIN_COSINE = 0.97;
+
+function isStrong(hit: ArchiveHit): boolean {
+  return (
+    (hit.inliers ?? 0) >= MIN_INLIERS ||
+    (hit.phash_distance ?? 64) <= MAX_PHASH ||
+    (hit.cosine ?? 0) >= MIN_COSINE
+  );
+}
+
+function closenessOf(hit: ArchiveHit): string {
+  if (hit.inliers !== null && hit.inliers >= MIN_INLIERS)
+    return `same footage: ${hit.inliers} matching points line up with the original`;
+  if (hit.phash_distance !== null && hit.phash_distance <= MAX_PHASH)
+    return `near-identical frame: ${hit.phash_distance} of 64 fingerprint bits differ`;
+  return `near-identical image: ${Math.round((hit.cosine ?? 0) * 100)}% similarity`;
+}
+
+function ArchiveMatch({ caseId, hit }: { caseId: string; hit: ArchiveHit }) {
+  // verified_genuine means genuine footage of the event named below, not necessarily this one.
+  const origin = hit.archive_label === "prior" ? "Older footage" : "Verified genuine footage";
   return (
     <div className={styles.match} data-archive={hit.archive_label}>
       <p className={styles.matchTitle}>{origin}</p>
+      <AuthedMedia
+        path={`/desk/cases/${caseId}/archive/${encodeURIComponent(hit.archive_id)}`}
+        alt={`Archive original: ${hit.original_context}`}
+        start={hit.archive_seconds}
+      />
       <p>{hit.original_context}</p>
-      <p className={styles.quiet}>{closeness}</p>
+      <p className={styles.quiet}>{closenessOf(hit)}</p>
       <a href={hit.source_url} target="_blank" rel="noreferrer">
         Open the original
       </a>
@@ -246,7 +370,7 @@ function Evidence({ passages, verdict }: { passages: Passage[]; verdict: Verdict
   return (
     <section className={styles.section} aria-labelledby="evidence">
       <h2 id="evidence" className={styles.heading}>
-        Evidence
+        Sources it relied on
       </h2>
       {passages.length === 0 && (
         <p className={styles.quiet}>Nothing in the trusted sources addresses this claim yet.</p>
@@ -276,7 +400,14 @@ function PassageItem({ passage, stance }: { passage: Passage; stance?: "supports
   const date = passage.published_at
     ? new Date(passage.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : "undated";
-  const kind = passage.source_kind === "fact_check" ? "fact-check" : passage.source_kind;
+  const kinds: Record<Passage["source_kind"], string> = {
+    news: "news",
+    official: "official",
+    fact_check: "fact-check",
+    web: "web search, unvetted",
+    platform: "shown on the post itself",
+  };
+  const kind = kinds[passage.source_kind];
   return (
     <li className={styles.passage} data-stance={stance}>
       <p className={styles.passageSource}>

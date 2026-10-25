@@ -1,9 +1,10 @@
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
 from app.pipeline.contracts import (
+    ArchiveHit,
     Duplicate,
     DuplicateBasis,
     Route,
@@ -11,7 +12,7 @@ from app.pipeline.contracts import (
     StageFailure,
     VerdictLabel,
 )
-from app.router.route import StageOutputs, Thresholds, route
+from app.router.route import StageOutputs, Thresholds, is_strong_match, route
 from tests.factories import cite, claim, hit, outputs, passage, verdict
 
 TWO_SOURCES = [passage("p1", "Kathmandu Post"), passage("p2", "Onlinekhabar")]
@@ -74,14 +75,23 @@ def test_strong_prior_match_with_false_verdict_is_fast_tracked() -> None:
     assert decision.proposed_label is VerdictLabel.FALSE
 
 
+def test_geometric_match_is_strong_from_min_inliers() -> None:
+    t = Thresholds()
+    assert is_strong_match(hit(phash_distance=40, inliers=t.min_inliers), t)
+    assert not is_strong_match(hit(phash_distance=40, inliers=t.min_inliers - 1), t)
+
+
 @pytest.mark.parametrize(
     ("phash_distance", "cosine", "strong"),
     [
-        (16, None, True),
-        (17, None, False),
+        (10, None, True),
+        # Measured on real video: unrelated news clips matched at 12 and 16.
+        (12, None, False),
         (None, 0.97, True),
         (None, 0.9699, False),
         (30, 0.98, True),
+        # A clip with no hash or embedding match and too few inliers is not strong.
+        (40, 0.5, False),
         # Measured: a different photo of the same river. Must never count as recycled.
         (26, 0.946, False),
     ],
@@ -128,6 +138,29 @@ def test_genuine_footage_age_boundaries(
             hits=[genuine],
             verdict=verdict("misleading", 0.3),
             seen_on=seen_on,
+        )
+    )
+    assert (decision.route is Route.FAST_TRACK) is recycled
+
+
+@pytest.mark.parametrize(
+    ("claimed_year", "recycled"),
+    [
+        (2082, False),  # Bikram Sambat: Apr 2025 to Apr 2026, the footage's own year
+        (2025, False),
+        (2083, True),  # BS 2083 began Apr 2026, after the footage
+        (2026, True),
+        (None, True),  # undated post seen a year on
+    ],
+)
+def test_a_year_the_post_states_dates_its_footage(claimed_year: int | None, recycled: bool) -> None:
+    genuine = hit(archive_label="verified_genuine", original_date=date(2025, 9, 28))
+    decision = route(
+        outputs(
+            claim=claim(claimed_year=claimed_year),
+            hits=[genuine],
+            verdict=verdict("misleading", 0.3),
+            seen_on=date(2026, 10, 21),
         )
     )
     assert (decision.route is Route.FAST_TRACK) is recycled
@@ -339,3 +372,235 @@ def test_prior_fact_check_does_not_rescue_a_fallback_verdict() -> None:
         )
     )
     assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_nepali_issue_stops_a_recycled_fast_track() -> None:
+    flipped = verdict("false", 0.95, nepali_issue="verdict direction")
+    decision = route(outputs(hits=[hit()], verdict=flipped))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["Nepali rationale needs a checker: verdict direction"]
+
+
+# findings
+
+
+NEWS = [passage("p1", "Onlinekhabar"), passage("p2", "Nepalnews")]
+TWO_REFUTE = [cite("p1"), cite("p2")]
+
+
+def findings(media: str, event: str = "confirmed", number: str = "none_claimed") -> dict[str, str]:
+    return {"media_finding": media, "event_finding": event, "number_finding": number}
+
+
+def test_false_with_nothing_contradicting_the_claim_goes_to_a_checker() -> None:
+    # "403 tourists missing": no report gives a tourist count, which is not a refutation.
+    unproven = verdict(
+        "false",
+        0.92,
+        citations=TWO_REFUTE,
+        **findings("not_established", "confirmed", "not_established"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=unproven, posted_on=date(2026, 8, 28)))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["verdict is false but nothing found contradicts the claim"]
+
+
+@pytest.mark.parametrize(
+    ("posted_on", "route_to"),
+    [(None, Route.HUMAN_REVIEW), (date(2026, 8, 28), Route.FAST_TRACK)],
+)
+def test_a_contradicted_figure_needs_the_posts_date(
+    posted_on: date | None, route_to: Route
+) -> None:
+    wrong_toll = verdict(
+        "false",
+        0.92,
+        citations=TWO_REFUTE,
+        **findings("not_established", "confirmed", "contradicted"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=wrong_toll, posted_on=posted_on))
+    assert decision.route is route_to
+    if posted_on is None:
+        assert decision.reasons == ["figures change daily and the post's date is unknown"]
+
+
+def test_true_with_footage_from_elsewhere_is_a_conflict() -> None:
+    mixed = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("elsewhere"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=mixed))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["verdict is true but the footage is elsewhere"]
+
+
+def test_a_real_event_does_not_vouch_for_unidentified_footage() -> None:
+    unseen = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("not_established"),
+    )
+    decision = route(outputs(passages=NEWS, verdict=unseen))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == ["the event is confirmed but nothing shows the footage is from it"]
+
+
+def test_web_pages_never_count_as_independent_sources() -> None:
+    web = [
+        passage("p1", "site-a.test", source_kind="web"),
+        passage("p2", "site-b.test", source_kind="web"),
+    ]
+    decision = route(outputs(passages=web, verdict=verdict("false", 0.95, citations=TWO_REFUTE)))
+    assert decision.route is Route.HUMAN_REVIEW
+
+
+def test_a_report_confirming_the_event_does_not_contradict_recycled_footage() -> None:
+    elsewhere = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("elsewhere", "confirmed")
+    )
+    decision = route(outputs(hits=[hit()], passages=NEWS, verdict=elsewhere))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["recycled media: matches 2023 Himachal Pradesh floods, Kullu"]
+    # Without a finding that the footage is wrong, the same citation is still a conflict.
+    unseen = verdict(
+        "false", 0.95, citations=[cite("p1", "supports")], **findings("not_established")
+    )
+    assert route(outputs(hits=[hit()], passages=NEWS, verdict=unseen)).route is Route.HUMAN_REVIEW
+
+
+@pytest.mark.parametrize(
+    ("media", "event", "hits", "route_to"),
+    [
+        # The BBC rescue, matched to the fact-check of its AI copy: only footage decides.
+        ("ai_generated", "not_found", [], Route.HUMAN_REVIEW),
+        ("ai_generated", "not_found", [hit(archive_label="verified_genuine")], Route.FAST_TRACK),
+        ("no_media", "contradicted", [], Route.FAST_TRACK),  # a text claim
+        ("elsewhere", "contradicted", [], Route.HUMAN_REVIEW),  # the check may refute it alone
+    ],
+)
+def test_a_fact_check_alone_does_not_fast_track_footage(
+    media: str, event: str, hits: list[ArchiveHit], route_to: Route
+) -> None:
+    checked = verdict("false", 0.9, citations=[cite("p1")], **findings(media, event))
+    decision = route(outputs(passages=FACT_CHECK, hits=hits, verdict=checked))
+    assert decision.route is route_to
+    if route_to is Route.HUMAN_REVIEW:
+        assert decision.reasons == [
+            "prior fact-check agrees (Nepal Factcheck), "
+            "but no frame match shows it checked this footage"
+        ]
+
+
+def test_two_sources_do_not_fast_track_unseen_footage() -> None:
+    two = verdict("false", 0.9, citations=TWO_REFUTE, **findings("elsewhere"))
+    decision = route(outputs(passages=NEWS, verdict=two))
+    assert decision.route is Route.HUMAN_REVIEW
+    assert decision.reasons == [
+        "2 independent sources (Onlinekhabar, Nepalnews) agree, "
+        "but no frame match ties them to this footage"
+    ]
+
+
+GENUINE_ON_HAMSA = hit(
+    archive_id="case-38ec51f3aff9-0",
+    archive_label="verified_genuine",
+    original_context="Verified genuine on Hamsa: Business Standard report of the Rasuwa flood.",
+    original_date=None,
+)
+
+
+def test_footage_a_checker_published_fast_tracks_an_agreeing_verdict() -> None:
+    true = verdict("true", 0.8, citations=[cite("p1", "supports")], **findings("shows_claim"))
+    decision = route(outputs(hits=[GENUINE_ON_HAMSA], verdict=true))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["same footage published as true on Hamsa (38ec51f3aff9)"]
+
+
+def test_footage_a_checker_published_does_not_carry_a_different_label() -> None:
+    # The same genuine clip, recaptioned as today's flood: the earlier "true" is not reused.
+    misdated = verdict(
+        "false", 0.9, citations=[cite("p1")], **findings("elsewhere", "contradicted")
+    )
+    decision = route(outputs(hits=[GENUINE_ON_HAMSA], verdict=misdated))
+    assert not any(r.startswith("same footage published") for r in decision.reasons)
+
+
+def test_debunked_on_hamsa_needs_the_same_label() -> None:
+    debunked = hit(
+        archive_id="case-77f11fb6f371-0",
+        original_context="Debunked on Hamsa as false: The video is AI-generated.",
+    )
+    false = verdict("false", 0.9, citations=[cite("p1")], **findings("ai_generated"))
+    assert route(outputs(hits=[debunked], verdict=false)).reasons == [
+        "same footage published as false on Hamsa (77f11fb6f371)"
+    ]
+    fallback = false.model_copy(update={"fallback": True})
+    reasons = route(outputs(hits=[debunked], verdict=fallback)).reasons
+    assert not any(r.startswith("same footage published") for r in reasons)
+
+
+@pytest.mark.parametrize(
+    ("posted", "route_to"),
+    [(date(2026, 8, 27), Route.FAST_TRACK), (date(2026, 3, 1), Route.HUMAN_REVIEW)],
+)
+def test_a_true_event_must_be_reported_around_the_posts_date(posted: date, route_to: Route) -> None:
+    september = datetime(2026, 9, 3, tzinfo=UTC)
+    news = [
+        passage("p1", "Onlinekhabar", published_at=september),
+        passage("p2", "Nepalnews", published_at=september),
+    ]
+    true = verdict(
+        "true",
+        0.9,
+        citations=[cite("p1", "supports"), cite("p2", "supports")],
+        **findings("no_media"),
+    )
+    decision = route(outputs(passages=news, verdict=true, posted_on=posted))
+    assert decision.route is route_to
+    if route_to is Route.HUMAN_REVIEW:
+        assert decision.reasons == [
+            "every report confirming it is from after 2026-03-15: a later event?"
+        ]
+
+
+# what the platform shows on the post (ADR 0017)
+
+NOTE = passage(
+    "note-1",
+    "X Community Notes",
+    source_kind="platform",
+    text="The video compiles clips from prior unrelated mudslide/flood incidents.",
+)
+AI_LABEL = passage("tiktok-aigc-1", "TikTok AI label", source_kind="platform")
+
+
+def test_a_true_draft_on_a_post_with_a_community_note_goes_to_a_checker() -> None:
+    decision = route(
+        outputs(
+            passages=[NOTE, *TWO_SOURCES],
+            verdict=verdict(
+                "true", 0.95, citations=[cite("p1", "supports"), cite("p2", "supports")]
+            ),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW
+    assert "verdict is true but X readers added context to this post" in decision.reasons
+
+
+def test_tiktoks_ai_label_counts_like_a_visible_watermark() -> None:
+    decision = route(outputs(passages=[AI_LABEL], verdict=verdict("false", 0.9)))
+    assert decision.route is Route.FAST_TRACK
+    assert decision.reasons == ["visible ai-tool watermark: TikTok AI label"]
+
+
+def test_a_platform_note_is_never_an_independent_source() -> None:
+    decision = route(
+        outputs(
+            passages=[NOTE, passage("p1", "Kathmandu Post")],
+            verdict=verdict("false", 0.95, citations=[cite("note-1"), cite("p1")]),
+        )
+    )
+    assert decision.route is Route.HUMAN_REVIEW  # one trusted source, not two

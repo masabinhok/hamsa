@@ -4,16 +4,22 @@ Rules run in a fixed order and the first match wins. Every decision carries the
 reasons that fired it, so a checker can see why a case landed where it did.
 """
 
+import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from app.pipeline.contracts import (
+    COMMUNITY_NOTE,
+    PLATFORM_AI_LABEL,
     ArchiveHit,
     ArchiveLabel,
     Claim,
     Duplicate,
+    EventFinding,
     Evidence,
+    MediaFinding,
     MediaMatch,
+    NumberFinding,
     Route,
     RouteDecision,
     SourceKind,
@@ -39,6 +45,11 @@ AI_TOOL_MARKS = (
 )
 
 REFUTING_LABELS = (VerdictLabel.FALSE, VerdictLabel.MISLEADING)
+FOOTAGE_REFUTED = (MediaFinding.ELSEWHERE, MediaFinding.AI_GENERATED)
+# How long after an event reports about it keep appearing (NEWS_AFTER in retrieve.py).
+REPORTS_AFTER = timedelta(days=14)
+# The context teach() (app/learn.py) gives footage from a case a checker published.
+PUBLISHED_ON_HAMSA = re.compile(r"(Verified genuine|Debunked) on Hamsa(?: as (false|misleading))?:")
 
 
 @dataclass(frozen=True)
@@ -48,10 +59,14 @@ class Thresholds:
     Media values come from a robustness check on Creative Commons flood photos
     (docs/architecture.md 3.3): edited reposts scored pHash <= 15 or cosine >= 0.974,
     different photos of the same river scored pHash >= 26 and cosine up to 0.946.
+    On real video (eval run 2026-10-11) unrelated clips matched from pHash 12, mostly on
+    end cards and logo frames, while true matches scored 4 and 10; hence 10.
     """
 
-    phash_max_distance: int = 16
+    phash_max_distance: int = 10
     cosine_min: float = 0.97
+    # ORB inliers (ADR 0009): reposts found by ORB scored 68-438, unrelated clips at most 23.
+    min_inliers: int = 30
     fast_track_confidence: float = 0.85
     min_independent_sources: int = 2
     # Footage of one disaster keeps being reposted, correctly, for weeks after it.
@@ -73,6 +88,8 @@ class StageOutputs:
     verdict: Verdict | None = None
     # When the post was made or submitted; dates archive footage that has no prior label.
     seen_on: date | None = None
+    # When the post was made, if known; seen_on falls back to the submission day.
+    posted_on: date | None = None
 
 
 def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) -> RouteDecision:
@@ -102,12 +119,24 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         raise ValueError(f"verdict cites passages it was not given: {unknown}")
 
     strong_prior = recycled_hits(outputs, thresholds)
-    ai_marks = _ai_tool_marks(claim)
-    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks)
+    ai_marks = _ai_tool_marks(claim) + _platform_ai_labels(evidence)
+    dated = outputs.posted_on is not None or claim.claimed_date is not None
+    posted = None if claim.claimed_date else outputs.posted_on
+    conflicts = _conflicts(verdict, evidence, strong_prior, ai_marks, dated=dated, posted=posted)
     label = verdict.label
 
     def decide(route: Route, reasons: list[str]) -> RouteDecision:
         return RouteDecision(route=route, reasons=reasons, proposed_label=label)
+
+    # A checker already published a verdict on this footage, and this one agrees; the date
+    # rules above make a misdated repost of genuine footage a conflict, never this.
+    if not conflicts and not verdict.fallback:
+        for hit in media.hits:
+            if is_strong_match(hit, thresholds) and _published_label(hit) is label:
+                case_id = hit.archive_id.removeprefix("case-").rsplit("-", 1)[0]
+                return decide(
+                    Route.FAST_TRACK, [f"same footage published as {label} on Hamsa ({case_id})"]
+                )
 
     if not conflicts and label in REFUTING_LABELS:
         if strong_prior:
@@ -127,18 +156,32 @@ def route(outputs: StageOutputs, thresholds: Thresholds = DEFAULT_THRESHOLDS) ->
         and label is not VerdictLabel.UNVERIFIABLE
         and verdict.confidence >= thresholds.fast_track_confidence
     )
+    # Text about some video is not proof about this one: on live posts (2026-10-22) checks
+    # of an AI copy and of other videos landed on genuine BBC, Sky and CNN footage.
+    framed = any(is_strong_match(h) for h in media.hits)
+    unseen = _footage_decides(verdict) and not framed
+    unconfirmed: list[str] = []
     if confident and (checkers := _agreeing_fact_checkers(verdict, evidence)):
-        return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        # Not unseen alone: the matched check is often the only thing "contradicting" the
+        # words too (live L29: BOOM's check of an AI copy of the real police rescue).
+        if framed or verdict.media_finding in (None, MediaFinding.NO_MEDIA):
+            return decide(Route.FAST_TRACK, [f"prior fact-check agrees: {', '.join(checkers)}"])
+        unconfirmed = [
+            f"prior fact-check agrees ({', '.join(checkers)}), "
+            "but no frame match shows it checked this footage"
+        ]
     if confident and len(agreeing) >= thresholds.min_independent_sources:
-        return decide(
-            Route.FAST_TRACK,
-            [f"strong evidence: {len(agreeing)} independent sources ({', '.join(agreeing)})"],
-        )
+        reason = f"{len(agreeing)} independent sources ({', '.join(agreeing)})"
+        if not unseen:
+            return decide(Route.FAST_TRACK, [f"strong evidence: {reason}"])
+        unconfirmed = unconfirmed or [
+            f"{reason} agree, but no frame match ties them to this footage"
+        ]
 
     if not evidence.passages and not media.hits:
         return decide(Route.INVESTIGATE, ["new claim: no evidence and no archive match"])
 
-    reasons = conflicts or [_why_not_confident(verdict, agreeing, thresholds)]
+    reasons = conflicts or unconfirmed or [_why_not_confident(verdict, agreeing, thresholds)]
     return decide(Route.HUMAN_REVIEW, reasons)
 
 
@@ -153,28 +196,99 @@ def recycled_hits(outputs: StageOutputs, t: Thresholds = DEFAULT_THRESHOLDS) -> 
     if outputs.media_match is None:
         return []
     # A date the post itself claims wins: "the 2024 flood" with 2024 footage is not recycled.
-    claimed = outputs.claim.claimed_date if outputs.claim else None
+    claim = outputs.claim
+    claimed = claim.claimed_date if claim else None
     reference = claimed or outputs.seen_on
+    since = _claimed_year_start(claim.claimed_year) if claim and not claimed else None
     return [
         hit
         for hit in outputs.media_match.hits
-        if is_strong_match(hit, t) and _is_older_footage(hit, reference, t)
+        if is_strong_match(hit, t) and _is_older_footage(hit, reference, since, t)
     ]
+
+
+def _confirmed_only_later(verdict: Verdict, evidence: Evidence, posted: date) -> date | None:
+    """The cut-off, when every dated report supporting a true verdict comes after it."""
+    cutoff = posted + REPORTS_AFTER
+    dates = [
+        p.published_at.date()
+        for c in verdict.citations
+        if c.stance is Stance.SUPPORTS and (p := evidence.by_id(c.passage_id)) and p.published_at
+    ]
+    return cutoff if dates and min(dates) > cutoff else None
+
+
+def _published_label(hit: ArchiveHit) -> VerdictLabel | None:
+    found = PUBLISHED_ON_HAMSA.match(hit.original_context)
+    if not hit.archive_id.startswith("case-") or found is None:
+        return None
+    return VerdictLabel.TRUE if found[1] == "Verified genuine" else VerdictLabel(found[2])
 
 
 def is_strong_match(hit: ArchiveHit, t: Thresholds = DEFAULT_THRESHOLDS) -> bool:
     by_hash = hit.phash_distance is not None and hit.phash_distance <= t.phash_max_distance
     by_embedding = hit.cosine is not None and hit.cosine >= t.cosine_min
-    return by_hash or by_embedding
+    by_geometry = hit.inliers is not None and hit.inliers >= t.min_inliers
+    return by_hash or by_embedding or by_geometry
 
 
-def _is_older_footage(hit: ArchiveHit, reference: date | None, t: Thresholds) -> bool:
-    """Prior footage, or genuine footage of an earlier event resurfacing under a new claim."""
+def _claimed_year_start(year: int | None) -> date | None:
+    """First day of the claimed year. Bikram Sambat runs about 57 years ahead, so a year
+    past today's is BS, and BS years start in mid-April (Baisakh 1)."""
+    if year is None:
+        return None
+    if year > date.today().year:
+        return date(year - 57, 4, 1)  # shortcut: early April, a margin before Baisakh 1
+    return date(year, 1, 1)
+
+
+def _is_older_footage(
+    hit: ArchiveHit, reference: date | None, since: date | None, t: Thresholds
+) -> bool:
+    """Prior footage, or genuine footage of an earlier event resurfacing under a new claim.
+
+    Old footage the post itself dates correctly ("the 2082 flood") is not recycled.
+    """
     if hit.archive_label is ArchiveLabel.PRIOR:
         return True
-    if hit.original_date is None or reference is None:
+    if hit.original_date is None:
+        return False
+    if since is not None:
+        return hit.original_date < since
+    if reference is None:
         return False
     return (reference - hit.original_date).days > t.same_event_days
+
+
+def _footage_decides(verdict: Verdict) -> bool:
+    """The label rests on what the footage is, not on the post's words or figures.
+
+    False for text posts, and for verdicts drafted before findings were asked for.
+    """
+    if verdict.media_finding in (None, MediaFinding.NO_MEDIA):
+        return False
+    if verdict.label is VerdictLabel.TRUE:
+        return True
+    words_refuted = (
+        verdict.event_finding is EventFinding.CONTRADICTED
+        or verdict.number_finding is NumberFinding.CONTRADICTED
+    )
+    return verdict.media_finding in FOOTAGE_REFUTED and not words_refuted
+
+
+def _found_refuting(verdict: Verdict) -> bool:
+    if verdict.media_finding is None:  # drafted before findings were asked for
+        return True
+    return (
+        verdict.media_finding in FOOTAGE_REFUTED
+        or verdict.event_finding is EventFinding.CONTRADICTED
+        or verdict.number_finding is NumberFinding.CONTRADICTED
+    )
+
+
+def _platform_ai_labels(evidence: Evidence) -> list[str]:
+    # A platform's own "AI-generated" label is as plain a mark as a visible watermark.
+    return [p.source for p in evidence.passages if p.source == PLATFORM_AI_LABEL][:1]
 
 
 def _ai_tool_marks(claim: Claim) -> list[str]:
@@ -199,7 +313,9 @@ def _agreeing_sources(verdict: Verdict, evidence: Evidence) -> list[str]:
     sources: list[str] = []
     for citation in verdict.citations:
         passage = evidence.by_id(citation.passage_id)
-        if passage and citation.stance is expected and passage.source not in sources:
+        # Web pages and platform notes are shown to the checker, never a reason to skip one.
+        trusted = passage and passage.source_kind not in (SourceKind.WEB, SourceKind.PLATFORM)
+        if passage and trusted and citation.stance is expected and passage.source not in sources:
             sources.append(passage.source)
     return sources
 
@@ -224,8 +340,18 @@ def _conflicts(
     evidence: Evidence,
     strong_prior: list[ArchiveHit],
     ai_marks: list[str],
+    *,
+    dated: bool,
+    posted: date | None = None,
 ) -> list[str]:
     conflicts: list[str] = []
+    if (
+        verdict.label is VerdictLabel.TRUE
+        and posted
+        and (later := _confirmed_only_later(verdict, evidence, posted))
+    ):
+        # "Floods in Nepal" posted on 1 March was confirmed by reports of the August floods.
+        conflicts.append(f"every report confirming it is from after {later}: a later event?")
     if verdict.label is VerdictLabel.TRUE:
         if strong_prior:
             conflicts.append(
@@ -234,11 +360,36 @@ def _conflicts(
         if ai_marks:
             marks = ", ".join(ai_marks)
             conflicts.append(f"verdict is true but ai-tool watermark visible: {marks}")
+        if verdict.media_finding in FOOTAGE_REFUTED:
+            conflicts.append(f"verdict is true but the footage is {verdict.media_finding}")
+        if verdict.media_finding is MediaFinding.NOT_ESTABLISHED:
+            # Real event, unknown footage: the post's implicit claim is still open.
+            conflicts.append("the event is confirmed but nothing shows the footage is from it")
+        if any(p.source == COMMUNITY_NOTE for p in evidence.passages):
+            # A note shown on X has been rated helpful by readers who usually disagree; a
+            # true draft beside one went out wrong (a compilation of old clips, Oct 2026).
+            conflicts.append("verdict is true but X readers added context to this post")
+
+    if verdict.label in REFUTING_LABELS and not (
+        strong_prior or ai_marks or _found_refuting(verdict)
+    ):
+        # "Nothing supports the claim" was drafted false: absence of evidence is not evidence.
+        conflicts.append(f"verdict is {verdict.label} but nothing found contradicts the claim")
+    if verdict.number_finding is NumberFinding.CONTRADICTED and not dated:
+        conflicts.append("figures change daily and the post's date is unknown")
+
+    if verdict.nepali_issue:
+        conflicts.append(f"Nepali rationale needs a checker: {verdict.nepali_issue}")
 
     expected = _expected_stance(verdict.label)
+    # Footage from elsewhere makes a post false even when the event is real, so a report
+    # confirming the event is no conflict (it sent 10 correct recycled verdicts to a human).
+    event_only = verdict.label in REFUTING_LABELS and verdict.media_finding in FOOTAGE_REFUTED
     if expected is not None:
         for citation in verdict.citations:
             passage = evidence.by_id(citation.passage_id)
+            if event_only and citation.stance is Stance.SUPPORTS:
+                continue
             if passage and citation.stance is not expected:
                 conflicts.append(f"cited {passage.source} {citation.stance} the claim")
     return conflicts

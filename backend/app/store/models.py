@@ -4,7 +4,17 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
-from sqlalchemy import JSON, DateTime, Dialect, Enum, ForeignKey, Index, String, TypeDecorator
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    Dialect,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    TypeDecorator,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,6 +34,7 @@ class CaseStatus(StrEnum):
 class Channel(StrEnum):
     WEB = "web"
     TELEGRAM = "telegram"
+    MESSENGER = "messenger"
 
 
 class JobState(StrEnum):
@@ -118,6 +129,67 @@ class Job(Base):
     not_before: Mapped[datetime] = mapped_column(default=utcnow)  # retry backoff
     lease_until: Mapped[datetime | None]  # a running job past this is presumed dead
     last_error: Mapped[str | None]
+
+
+class Checker(Base):
+    """A fact-checker with their own access code. Only the code's hash is kept."""
+
+    __tablename__ = "checkers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True)
+    code_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class SentVerdict(Base):
+    """The verdict message a submitter was sent, so a corrected verdict can replace it."""
+
+    __tablename__ = "sent_verdicts"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), primary_key=True)
+    message_id: Mapped[int | None]  # None where the platform cannot delete it (Messenger)
+
+
+class TelegramReport(Base):
+    """The chat a submission came from, so the bot can send the verdict back. Messenger
+    chats live here too (chat_id is the page-scoped user id); the case's channel says
+    which platform. shortcut: named for Telegram; rename once the schema has migrations."""
+
+    __tablename__ = "telegram_reports"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)  # Telegram ids exceed 32 bits
+    message_id: Mapped[int]
+    # The last case event the submitter heard about; event ids only grow, so a
+    # verdict corrected after a reopen is a newer event and is sent again.
+    told_event: Mapped[int] = mapped_column(default=0)
+    asked_for_media: Mapped[bool] = mapped_column(default=False)
+
+
+class PostId(Base):
+    """The platform's own id for a linked post, from yt-dlp: it survives share links,
+    redirects and tracking parameters, so a forwarded post is known as a repeat."""
+
+    __tablename__ = "post_ids"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), unique=True)
+    post_id: Mapped[str] = mapped_column(index=True)
+
+
+class Lesson(Base):
+    """A published case the archive has still to learn from (worker, ADR 0011)."""
+
+    __tablename__ = "lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), index=True)
+    # Where the checker found the original footage, for a refuted case.
+    original_url: Mapped[str | None]
+    done_at: Mapped[datetime | None] = mapped_column(UTCDateTime, index=True)
+    error: Mapped[str | None]
 
 
 class CaseEvent(Base):

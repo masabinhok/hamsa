@@ -93,3 +93,62 @@
   border-radius: 3px;
   font-family: inherit;
 }
+
+/* Why the case is here: the first thing to check before trusting the draft. */
+.reason {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink-soft);
+}
+
+/* Purpose A, cause and effect: a case arrived while the checker was working. Only arrivals
+   animate, never the first render; removals are not animated (see the motion notes). */
+.row[data-arrived] {
+  animation: arrive var(--dur-medium) var(--ease-out);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--shift)));
+  }
+}
+
+/* Filter chips: clear one kind of draft at a time (e.g. all true ones first). */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  text-decoration: none;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--ink-soft);
+}
+
+.chip[aria-current] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.chip[aria-current] .count {
+  color: var(--glacier);
+}

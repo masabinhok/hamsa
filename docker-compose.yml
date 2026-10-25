@@ -1,5 +1,23 @@
 name: hamsa
 
+# One command for the whole desk: docker compose up -d
+# Ollama runs on the host (it needs the GPU); see docs/install.md.
+
+x-backend: &backend
+  image: hamsa-backend  # one image for the api, worker and corpus watcher
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file: .env
+  # Host networking, so localhost reaches Ollama and Qdrant unchanged (Linux).
+  network_mode: host
+  volumes:
+    - ./data:/app/data
+    - huggingface:/root/.cache/huggingface
+  depends_on:
+    - qdrant
+  restart: unless-stopped
+
 services:
   qdrant:
     image: qdrant/qdrant:v1.19.2
@@ -8,3 +26,60 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
     restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: uvicorn --factory app.api.main:default_app --host 127.0.0.1 --port 8000
+
+  worker:
+    <<: *backend
+    command: python -m app.worker
+    # Only the worker fetches links, so only it gets the operator's browser login, read-only
+    # (ADR 0010). A merge key replaces lists, hence the shared mounts repeated here.
+    volumes:
+      - ./data:/app/data
+      - huggingface:/root/.cache/huggingface
+      - ${HOME}/.mozilla:/root/.mozilla:ro
+
+  corpus:
+    <<: *backend
+    command: python -m app.corpus watch
+
+  # Optional: docker compose --profile telegram up -d (needs TELEGRAM_BOT_TOKEN).
+  telegram:
+    <<: *backend
+    command: python -m app.telegram
+    profiles: [telegram]
+
+  # Optional: docker compose --profile messenger up -d (needs the three MESSENGER_* values).
+  # Meta reaches the webhook through a tunnel to 127.0.0.1:8001 (docs/install.md); with host
+  # networking the app itself listens on loopback, so no port mapping is needed.
+  messenger:
+    <<: *backend
+    command: python -m app.messenger
+    profiles: [messenger]
+
+  # Web search for evidence the trusted corpus lacks; Hamsa skips it while SEARXNG_URL is unset.
+  searxng:
+    image: searxng/searxng:2026.10.19-81371861f
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env, e.g. openssl rand -hex 32}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        SITE_URL: ${FRONTEND_ORIGIN:-http://localhost:3000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+volumes:
+  huggingface:

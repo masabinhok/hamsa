@@ -12,8 +12,12 @@ data/qdrant/
 data/eval/media/
 data/eval/robustness/
 data/corpus/
-data/hamsa.db*
+data/*.db*
 data/cases/
 data/eval/drafts*
 data/eval/runs/
 graphify-out/
+*.mp4
+
+# A third-party design skill kept locally, not part of Hamsa
+SKILL.md

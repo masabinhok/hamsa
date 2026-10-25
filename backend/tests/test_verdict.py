@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 
 import pytest
@@ -8,6 +9,7 @@ from app.llm.structured import Check, StructuredOutputError
 from app.pipeline.contracts import Evidence, MediaMatch, Stance, VerdictLabel
 from app.pipeline.verdict import (
     build_prompt,
+    check_nepali,
     draft_schema,
     judge,
     strip_labels,
@@ -24,6 +26,9 @@ EVIDENCE = Evidence(
 
 def draft(**overrides: Any) -> dict[str, Any]:
     fields: dict[str, Any] = {
+        "media_finding": "elsewhere",
+        "event_finding": "confirmed",
+        "number_finding": "none_claimed",
         "label": "false",
         "confidence": 0.9,
         "rationale_en": "The video is from Alaska.",
@@ -62,9 +67,10 @@ class FakeReasoner:
         return parsed
 
 
-def test_schema_allows_only_the_given_evidence_labels() -> None:
+def test_schema_allows_only_the_given_evidence_labels_and_three_citations() -> None:
     schema = draft_schema(["E1", "E2"])
     assert schema["$defs"]["DraftCitation"]["properties"]["evidence"]["enum"] == ["E1", "E2"]
+    assert schema["properties"]["citations"]["maxItems"] == 3
 
 
 def test_schema_forbids_citations_when_there_is_no_evidence() -> None:
@@ -79,6 +85,18 @@ def test_prompt_labels_evidence_and_states_media_and_match_strength() -> None:
     assert "- strong match to prior footage: 2023 Himachal Pradesh floods, Kullu" in prompt
     assert "[E1] Nepal Factcheck (fact_check, " in prompt
     assert "[E2] Onlinekhabar (news, " in prompt
+
+
+def test_prompt_states_the_posts_own_date() -> None:
+    prompt = build_prompt(claim(), MediaMatch(), Evidence(), True, date(2026, 8, 27))
+    assert "POSTED ON: 2026-08-27" in prompt
+    assert "POSTED ON" not in build_prompt(claim(), MediaMatch(), Evidence(), has_media=True)
+
+
+def test_weak_archive_matches_are_left_out_of_the_prompt() -> None:
+    weak = hit(phash_distance=30, cosine=0.5)
+    prompt = build_prompt(claim(), MediaMatch(hits=[weak]), Evidence(), has_media=True)
+    assert "ARCHIVE MATCHES:\nnone" in prompt
 
 
 def test_prompt_shows_passage_headlines() -> None:
@@ -182,3 +200,50 @@ def test_bare_label_in_running_text_is_rejected_for_rewrite() -> None:
     reasoner = FakeReasoner(draft(rationale_en="As E1 shows, the video is old."))
     with pytest.raises(StructuredOutputError, match="mentions evidence labels"):
         judge(claim(), MediaMatch(), EVIDENCE, [(reasoner, "gpt-oss")], has_media=True)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "issue"),
+    [
+        ({"faithful": True, "problem": ""}, None),
+        ({"faithful": False, "problem": "verdict direction"}, "verdict direction"),
+        ({"faithful": False, "problem": " "}, "the meaning differs"),
+        (ReasonerUnavailable("http 429"), "not checked: http 429"),
+    ],
+)
+def test_nepali_rationale_is_checked_against_the_english(
+    outcome: dict[str, Any] | Exception, issue: str | None
+) -> None:
+    checker = FakeReasoner(outcome)
+    english = "The video is from Surat, not Butwal."
+    nepali = "भिडियो सुरतको होइन, बुटवलको हो।"
+    assert check_nepali(english, nepali, (checker, "gpt-oss-20b")) == issue
+    assert english in checker.prompts[0]
+    assert nepali in checker.prompts[0]
+
+
+def test_verdict_carries_the_nepali_issue() -> None:
+    checker = FakeReasoner({"faithful": False, "problem": "negation flipped"})
+    verdict = judge(
+        claim(),
+        MediaMatch(),
+        EVIDENCE,
+        [(FakeReasoner(draft()), "gpt-oss")],
+        has_media=False,
+        checker=(checker, "gpt-oss-20b"),
+    )
+    assert verdict.nepali_issue == "negation flipped"
+
+
+def test_without_a_checker_the_nepali_counts_as_unchecked() -> None:
+    reasoners = [(FakeReasoner(draft()), "gpt-oss")]
+    verdict = judge(claim(), MediaMatch(), EVIDENCE, reasoners, has_media=False)
+    assert (verdict.nepali_issue or "").startswith("not checked by a hosted model")
+
+
+def test_with_no_hosted_model_the_local_draft_is_a_fallback() -> None:
+    reasoner = FakeReasoner(draft())
+    verdict = judge(
+        claim(), MediaMatch(), EVIDENCE, [(reasoner, "qwen3-vl")], has_media=False, hosted=0
+    )
+    assert verdict.fallback

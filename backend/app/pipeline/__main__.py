@@ -16,22 +16,36 @@ from app.config import Settings, get_settings
 from app.ingest.frames import Frame
 from app.llm.groq import GroqClient
 from app.llm.ollama import OllamaClient
+from app.pipeline.claim_reviews import ClaimReviewSearch, covering, same_claim_only
 from app.pipeline.contracts import Claim
 from app.pipeline.extract import extract_claim
 from app.pipeline.media_match import ArchiveIndex, SiglipEmbedder
+from app.pipeline.platform import on_post
 from app.pipeline.retrieve import EvidenceStore
 from app.pipeline.run import Pipeline, Result, run
 from app.pipeline.verdict import Reasoner
+from app.pipeline.web_search import WebSearch
 
 
 def build_pipeline(settings: Settings) -> Pipeline:
     ollama = OllamaClient(str(settings.ollama_host))
     qdrant = QdrantClient(url=str(settings.qdrant_url))
     reasoners: list[tuple[Reasoner, str]] = []
+    checker: tuple[Reasoner, str] | None = None
     if settings.groq_api_key is not None:
         groq = GroqClient(settings.groq_api_key.get_secret_value())
         reasoners.append((groq, settings.reasoning_model))
+        # At medium effort gpt-oss-20b wrote its reasoning where the JSON belongs on 9 of
+        # 29 eval verdicts; at low it answered all 30 of an earlier test.
+        low = GroqClient(settings.groq_api_key.get_secret_value(), reasoning_effort="low")
+        checker = (low, settings.checking_model)
+    else:
+        # No hosted provider: the checks run on the local model too, so Hamsa works offline
+        # instead of dropping the fact-check gate and the Nepali check (ADR 0001).
+        checker = (ollama, settings.vision_model)
     reasoners.append((ollama, settings.vision_model))  # fallback (ADR 0001, 0007)
+
+    vet = covering(checker) if checker else None
 
     def extract(text: str | None, frames: Sequence[Frame]) -> Claim:
         return extract_claim(ollama, settings.vision_model, text, frames)
@@ -46,7 +60,16 @@ def build_pipeline(settings: Settings) -> Pipeline:
         evidence=EvidenceStore(qdrant),
         embed_text=embed_text,
         reasoners=reasoners,
-        incident_start=settings.incident_start,
+        hosted=len(reasoners) - 1,  # the local model is always last
+        nepali_checker=checker,
+        find_reviews=(
+            same_claim_only(ClaimReviewSearch(settings.fact_check_api_key.get_secret_value()), vet)
+            if settings.fact_check_api_key and vet
+            else None
+        ),
+        vet_fact_checks=vet,
+        find_web=WebSearch(str(settings.searxng_url), embed_text) if settings.searxng_url else None,
+        find_on_post=on_post,
     )
 
 

@@ -2,24 +2,26 @@
 :root {
   --milk: #f6f8f7;
   --milk-deep: #eaf0ee;
+  --paper: #ffffff; /* cards and the article column sit on paper, the page on milk */
   --ink: #16323b;
   --ink-soft: #3d5862;
-  --silt: #6e8288;
+  --silt: #5a6d73; /* 5:1 on --milk; small grey text must stay readable (WCAG AA) */
   --rule: #cfdbd9;
   --glacier: #a9cfd3;
   --glacier-wash: #e2f0f1;
 
   /* Verdict colours carry meaning and are used for nothing else. */
   --false: #a3283b;
-  --misleading: #a86a12;
+  --misleading: #8f5a0f; /* 5:1 on --milk; #a86a12 was 4.1:1, under AA for 14px pills */
   --true: #2d7656;
   --unverifiable: #5d6970;
 
   --font-ui: var(--font-mukta), system-ui, sans-serif;
   --font-read: var(--font-martel), Georgia, serif;
 
-  /* Type scale: 1.25 ratio from 16px. */
-  --step--1: 0.8rem;
+  /* Type scale: 1.25 ratio from 16px, except the smallest step: 12.8px Devanagari lost its
+     vowel signs on the desk (Oct 23 feedback), so nothing goes below 14px. */
+  --step--1: 0.875rem;
   --step-0: 1rem;
   --step-1: 1.25rem;
   --step-2: 1.5625rem;
@@ -32,6 +34,17 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   --space-7: 3rem;
+
+  /* Motion. Every duration and easing comes from here; exits run at about 3/4 of entrances. */
+  --dur-micro: 150ms; /* press, hover, focus */
+  --dur-short: 200ms; /* small state changes, fades */
+  --dur-medium: 300ms; /* case and page transitions; also the wait before showing "loading" */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1); /* entrances */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exits */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* moves within the screen */
+  /* How far things travel. Reduced motion zeroes these, so every animation becomes a fade. */
+  --shift: 12px;
+  --press: 0.97;
 }
 
 *,
@@ -77,7 +90,8 @@ textarea {
 }
 
 :focus-visible {
-  outline: 3px solid var(--glacier);
+  /* --glacier was 1.6:1 on --milk; a focus ring needs 3:1 to be seen */
+  outline: 3px solid var(--ink-soft);
   outline-offset: 2px;
 }
 
@@ -90,11 +104,21 @@ textarea {
   white-space: nowrap;
 }
 
+/* Keep the feedback, drop the movement: fades only, none longer than 150ms. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition: none !important;
+  :root {
+    --shift: 0px;
+    --press: 1;
+    --dur-short: 150ms;
+    --dur-medium: 150ms;
+  }
+}
+
+/* Page-change crossfades (React ViewTransition) follow the same rule as every other motion. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
     animation: none !important;
   }
 }

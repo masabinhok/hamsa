@@ -35,6 +35,9 @@ export interface ArchiveHit {
   frame_index: number;
   phash_distance: number | null;
   cosine: number | null;
+  inliers: number | null;
+  post_seconds: number | null;
+  archive_seconds: number | null;
   archive_label: "prior" | "verified_genuine";
   original_context: string;
   original_date: string | null;
@@ -44,7 +47,7 @@ export interface ArchiveHit {
 export interface Passage {
   passage_id: string;
   source: string;
-  source_kind: "news" | "official" | "fact_check";
+  source_kind: "news" | "official" | "fact_check" | "web" | "platform";
   url: string;
   title: string | null;
   published_at: string | null;
@@ -58,6 +61,10 @@ export interface Verdict {
   rationale_en: string;
   rationale_ne: string;
   citations: { passage_id: string; stance: Stance }[];
+  // Null on verdicts drafted before findings were asked for.
+  media_finding?: string | null;
+  event_finding?: string | null;
+  number_finding?: string | null;
   model: string;
   fallback: boolean;
 }
@@ -91,7 +98,16 @@ export interface DeskCase extends DeskSummary {
 }
 
 export type Decision =
-  | { action: "publish"; checker: string; label?: Label; rationale_en?: string; rationale_ne?: string; note?: string }
+  | {
+      action: "publish";
+      checker: string;
+      label?: Label;
+      rationale_en?: string;
+      rationale_ne?: string;
+      note?: string;
+      // Where the checker found the original footage; Hamsa then recognises its reposts.
+      original_url?: string;
+    }
   | { action: "reject"; checker: string; note: string }
   | { action: "reopen"; checker: string; note: string };
 
@@ -104,11 +120,8 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { ...init.headers, Authorization: `Bearer ${token}` },
-  });
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new ApiError(response.status, body.detail ?? response.statusText);
@@ -116,17 +129,77 @@ async function call<T>(token: string, path: string, init: RequestInit = {}): Pro
   return response.json() as Promise<T>;
 }
 
+function call<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+  return request<T>(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+}
+
+export interface PublishedVerdict {
+  label: Label;
+  rationale_en: string;
+  rationale_ne: string;
+  sources: { name: string; url: string; stance: Stance }[];
+  published_at: string;
+  claim: Pick<Claim, "claim" | "claim_en" | "places" | "claimed_date"> | null;
+  earlier_footage: Pick<ArchiveHit, "archive_label" | "original_context" | "original_date" | "source_url">[];
+  media: string[];
+}
+
+export interface PublicCase {
+  id: string;
+  status: CaseStatus;
+  created_at: string;
+  text: string | null;
+  source_url: string | null;
+  media_count: number;
+  // Status changes only: who decided and why stay on the desk.
+  timeline: { at: string; status: CaseStatus }[];
+  merged_into: string | null;
+  verdict: PublishedVerdict | null;
+  needs_media: boolean;
+}
+
+export interface VerdictPage {
+  items: PublicCase[];
+  next: string | null;
+  total: number;
+}
+
+// The public side: anyone can submit a post and follow its verdict, no sign-in.
+export const site = {
+  submit: (form: FormData) => request<{ id: string }>("/cases", { method: "POST", body: form }),
+  case: (id: string) => request<PublicCase>(`/cases/${encodeURIComponent(id)}`),
+  // The file behind a link the worker could not open; the same report is checked again.
+  sendMedia: (id: string, form: FormData) =>
+    request<PublicCase>(`/cases/${encodeURIComponent(id)}/media`, { method: "POST", body: form }),
+  // Newest first, a page at a time; pass the previous page's `next` to get older ones.
+  verdicts: (before?: string) =>
+    request<VerdictPage>(`/verdicts${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  // Served only once a checker has published the report.
+  mediaUrl: (id: string, name: string) =>
+    `${API_URL}/cases/${encodeURIComponent(id)}/media/${encodeURIComponent(name)}`,
+};
+
 export const desk = {
+  // Whose access code this is; null for the operator token, which names nobody.
+  me: (token: string) => call<{ name: string | null }>(token, "/desk/me"),
   queue: (token: string) => call<DeskSummary[]>(token, "/desk/queue"),
   case: (token: string, id: string) => call<DeskCase>(token, `/desk/cases/${id}`),
+  // Nepali for a checker's English rationale; `issue` says why to reread it, if anything.
+  translate: (token: string, english: string) =>
+    call<{ nepali: string; issue: string | null }>(token, "/desk/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ english }),
+    }),
   decide: (token: string, id: string, decision: Decision) =>
     call<DeskCase>(token, `/desk/cases/${id}/decision`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(decision),
     }),
-  media: async (token: string, id: string, name: string): Promise<Blob> => {
-    const response = await fetch(`${API_URL}/desk/cases/${id}/media/${encodeURIComponent(name)}`, {
+  // A desk path such as /desk/cases/{id}/media/{name} or /desk/cases/{id}/archive/{archive_id}.
+  file: async (token: string, path: string): Promise<Blob> => {
+    const response = await fetch(`${API_URL}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new ApiError(response.status, "media unavailable");

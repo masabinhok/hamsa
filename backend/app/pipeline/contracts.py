@@ -34,8 +34,13 @@ class Claim(Contract):
     claim_en: NonEmptyStr
     places: list[NonEmptyStr] = []
     claimed_date: date | None = None
+    # As written: Gregorian (2015) or Bikram Sambat (2072); the router tells them apart.
+    claimed_year: int | None = None
     numbers: list[ClaimedNumber] = []
     visible_text: list[NonEmptyStr] = []
+    # What the frames show, so a fact-check about other footage of the same disaster can be
+    # told apart from one about this footage.
+    scene: str = ""
     watermarks: list[NonEmptyStr] = []
     handles: list[NonEmptyStr] = []
     checkable: bool
@@ -54,6 +59,12 @@ class ArchiveHit(Contract):
     frame_index: Annotated[int, Field(ge=0)]
     phash_distance: Annotated[int | None, Field(ge=0, le=64)] = None
     cosine: Annotated[float | None, Field(ge=-1.0, le=1.0)] = None
+    # ORB keypoint matches that agree on one geometric transform between the frames.
+    inliers: Annotated[int | None, Field(ge=0)] = None
+    # Where each side of the best frame pair sits, so the desk can show them together.
+    post_seconds: Annotated[float | None, Field(ge=0)] = None
+    archive_seconds: Annotated[float | None, Field(ge=0)] = None
+    archive_media: str | None = None  # path under data/, served to checkers only
     archive_label: ArchiveLabel
     original_context: NonEmptyStr
     original_date: date | None = None
@@ -74,6 +85,7 @@ class MediaMatch(Contract):
 
 
 class DuplicateBasis(StrEnum):
+    LINK = "link"
     MEDIA = "media"
     CLAIM = "claim"
 
@@ -90,6 +102,16 @@ class SourceKind(StrEnum):
     NEWS = "news"
     OFFICIAL = "official"
     FACT_CHECK = "fact_check"
+    # Found by open web search: shown as evidence, never counted as an independent source.
+    WEB = "web"
+    # Shown by the platform on this exact post (ADR 0017): an X Community Note, TikTok's
+    # AI-generated label. About this post, never counted as an independent source.
+    PLATFORM = "platform"
+
+
+# Sources of platform passages, which the router reads (ADR 0017).
+COMMUNITY_NOTE = "X Community Notes"
+PLATFORM_AI_LABEL = "TikTok AI label"
 
 
 class Passage(Contract):
@@ -135,6 +157,33 @@ class Stance(StrEnum):
     REFUTES = "refutes"
 
 
+class MediaFinding(StrEnum):
+    """What the evidence shows about the post's photo or video."""
+
+    SHOWS_CLAIM = "shows_claim"  # a frame match or fact-check places it in this event
+    ELSEWHERE = "elsewhere"  # another place, year, or event
+    AI_GENERATED = "ai_generated"
+    NOT_ESTABLISHED = "not_established"
+    NO_MEDIA = "no_media"
+
+
+class EventFinding(StrEnum):
+    """Whether the event the post describes happened, as described."""
+
+    CONFIRMED = "confirmed"
+    CONTRADICTED = "contradicted"
+    NOT_FOUND = "not_found"
+
+
+class NumberFinding(StrEnum):
+    """Figures change as counts are updated, so they are judged as of the post's date."""
+
+    CONSISTENT = "consistent"
+    CONTRADICTED = "contradicted"
+    NOT_ESTABLISHED = "not_established"
+    NONE_CLAIMED = "none_claimed"
+
+
 class Citation(Contract):
     passage_id: NonEmptyStr
     stance: Stance
@@ -152,11 +201,18 @@ class Verdict(Contract):
     rationale_en: Annotated[NonEmptyStr, AfterValidator(_within_word_limit)]
     rationale_ne: Annotated[NonEmptyStr, AfterValidator(_within_word_limit)]
     citations: list[Citation] = []
+    # None on verdicts drafted before findings were asked for.
+    media_finding: MediaFinding | None = None
+    event_finding: EventFinding | None = None
+    number_finding: NumberFinding | None = None
     model: NonEmptyStr
     # True when the hosted model was unavailable and the local model judged instead.
     # Measured weaker (it read "no evidence" as "false"), so the router never fast-tracks
     # on its judgement alone.
     fallback: bool = False
+    # Set when the Nepali rationale may not say what the English says (or could not be
+    # checked); the Nepali is published to the public, so a checker must read it first.
+    nepali_issue: str | None = None
 
     def unknown_citations(self, evidence: Evidence) -> list[str]:
         """Cited ids absent from the evidence the model was given: hallucinations."""

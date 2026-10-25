@@ -31,6 +31,7 @@ class GroqClient:
         api_key: str,
         http: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        reasoning_effort: str = "medium",
     ) -> None:
         self._http = http or httpx.Client(
             base_url=BASE_URL,
@@ -38,6 +39,7 @@ class GroqClient:
             headers={"Authorization": f"Bearer {api_key}"},
         )
         self._sleep = sleep
+        self._reasoning_effort = reasoning_effort
 
     def structured[T: BaseModel](
         self,
@@ -47,7 +49,6 @@ class GroqClient:
         prompt: str,
         schema: dict[str, Any] | None = None,
         check: Check | None = None,
-        reasoning_effort: str = "medium",
     ) -> T:
         messages: Messages = [
             {"role": "system", "content": system},
@@ -56,7 +57,7 @@ class GroqClient:
         body: dict[str, Any] = {
             "model": model,
             "temperature": 0,
-            "reasoning_effort": reasoning_effort,
+            "reasoning_effort": self._reasoning_effort,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -87,10 +88,28 @@ class GroqClient:
                 self._sleep(wait)
                 continue
 
-            response.raise_for_status()
+            if _failed_generation(response) and attempt < MAX_ATTEMPTS:
+                continue  # the model broke the schema this time; sampling again usually works
+            if response.is_error:
+                # e.g. 400 json_validate_failed when the model breaks the schema; the
+                # local model can still answer, and Groq's reason must reach the record.
+                raise ReasonerUnavailable(f"http {response.status_code}: {response.text[:300]}")
             payload: dict[str, Any] = response.json()
             return payload["choices"][0]["message"]["content"]
         raise ReasonerUnavailable("unreachable")  # loop always returns or raises
+
+
+# Groq's 400 codes for output the model generated but could not fit to the schema.
+FAILED_GENERATION = ("json_validate_failed", "output_parse_failed")
+
+
+def _failed_generation(response: httpx.Response) -> bool:
+    if response.status_code != 400:
+        return False
+    try:
+        return response.json()["error"]["code"] in FAILED_GENERATION
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def _retry_after(response: httpx.Response) -> float:

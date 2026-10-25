@@ -1,0 +1,1028 @@
+/* Public site, set like a Nepali news site: a front page of checked posts, and each verdict
+   read as an article. Sizes follow Onlinekhabar's reading system (measured 2026-10-24: article
+   body 22px / 1.8, card headlines 19-21px / 1.3), kept inside Hamsa's own palette and the 14px
+   floor in globals.css. Devanagari headlines get 1.25+ line-height so matras never touch. */
+.site {
+  min-height: 100dvh;
+  font-size: 1.125rem;
+  line-height: 1.7;
+  background: var(--milk);
+}
+
+/* ---------- top bar ---------- */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mastheadInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-5);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-read);
+  font-weight: 600;
+  font-size: var(--step-1);
+  white-space: nowrap;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brandNe {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+
+.nav a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.nav a:hover {
+  text-decoration: underline;
+}
+
+.nav .deskLink {
+  color: var(--silt);
+  font-weight: 400;
+}
+
+/* ---------- page frame ---------- */
+
+.page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+@media (min-width: 60rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    align-items: start;
+  }
+}
+
+/* With nothing in the side rail (no reports sent from this browser), the content takes the row. */
+.columns:has(> .rail:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rail:empty {
+  display: none;
+}
+
+.rail {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+}
+
+@media (min-width: 60rem) {
+  .rail {
+    position: sticky;
+    top: 5rem;
+  }
+}
+
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+/* Section titles, like a news front page: a word, a rule, and a "सबै" link if any. */
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--step-2);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.panel .heading {
+  font-size: var(--step-1);
+  border-bottom-width: 1px;
+}
+
+.en {
+  display: block;
+  font-size: max(0.8em, var(--step--1));
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--silt);
+}
+
+.heading .en {
+  display: inline;
+}
+
+.quiet {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.empty {
+  color: var(--silt);
+}
+
+/* ---------- send band ---------- */
+
+.send {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  background: var(--ink);
+  color: var(--milk);
+  border-radius: 10px;
+}
+
+@media (min-width: 48rem) {
+  .send {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    align-items: start;
+    gap: var(--space-6);
+    padding: var(--space-6);
+  }
+}
+
+.send .en,
+.send .quiet {
+  color: var(--glacier);
+}
+
+.title {
+  font-family: var(--font-ui);
+  font-size: var(--step-3);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.lede {
+  margin-top: var(--space-2);
+  font-size: var(--step-0);
+  line-height: 1.7;
+}
+
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid #7f9599;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 400;
+}
+
+.field input[type="file"] {
+  padding: var(--space-2);
+}
+
+.hint {
+  font-size: var(--step--1);
+}
+
+.more summary {
+  cursor: pointer;
+  font-size: var(--step--1);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.more[open] summary {
+  margin-bottom: var(--space-3);
+}
+
+.submit {
+  min-height: 48px;
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-radius: 6px;
+  background: var(--glacier);
+  color: var(--ink);
+  font-size: var(--step-0);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+.submit:active {
+  transform: scale(var(--press));
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* On the dark send band the button is light; inside an article (the file upload) it is dark. */
+.article .submit {
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.error {
+  padding: var(--space-3);
+  border-left: 4px solid var(--false);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 0 6px 6px 0;
+}
+
+.notice {
+  padding: var(--space-3) var(--space-4);
+  background: var(--glacier-wash);
+  border-radius: 6px;
+}
+
+/* ---------- verdict tag: the "category" above every headline ---------- */
+
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  width: fit-content;
+  padding: 0.1em 0.6em;
+  border-radius: 4px;
+  background: var(--verdict, var(--unverifiable));
+  color: var(--paper);
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.tag span {
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.site [data-label="false"] {
+  --verdict: var(--false);
+}
+
+.site [data-label="misleading"] {
+  --verdict: var(--misleading);
+}
+
+.site [data-label="true"] {
+  --verdict: var(--true);
+}
+
+.site [data-label="unverifiable"] {
+  --verdict: var(--unverifiable);
+}
+
+.chip {
+  display: inline-block;
+  width: fit-content;
+  padding: 0.1em 0.6em;
+  border-radius: 4px;
+  background: var(--glacier-wash);
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+
+.chip span {
+  font-weight: 400;
+}
+
+.chip[data-size="large"] {
+  font-size: var(--step-1);
+  padding: 0.2em 0.8em;
+}
+
+/* ---------- news cards ---------- */
+
+.feed {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.5rem;
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+@media (min-width: 40rem) {
+  .card {
+    grid-template-columns: 13rem minmax(0, 1fr);
+  }
+
+  .card .thumb {
+    order: -1;
+  }
+}
+
+.cardText {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cardTitle {
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.card:hover .cardTitle {
+  text-decoration: underline;
+  text-decoration-color: var(--verdict, var(--ink));
+  text-underline-offset: 0.2em;
+}
+
+.cardExcerpt {
+  font-size: var(--step-0);
+  line-height: 1.65;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The newest verdict leads the page, bigger, image on top. */
+.lead {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.lead .thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+.lead .cardTitle {
+  font-size: clamp(1.625rem, 4vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.lead .cardExcerpt {
+  -webkit-line-clamp: 3;
+  font-size: 1.125rem;
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--milk-deep);
+}
+
+.thumb img,
+.thumb video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* No picture to show: the swan on the verdict's colour, so the list keeps its rhythm. */
+.thumbEmpty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: color-mix(in srgb, var(--verdict, var(--unverifiable)) 14%, var(--paper));
+}
+
+.thumbEmpty svg,
+.thumbEmpty img {
+  width: 34%;
+  height: auto;
+  opacity: 0.85;
+}
+
+.play {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  padding: 0 0.5em;
+  border-radius: 4px;
+  background: rgb(22 50 59 / 0.75);
+  color: var(--milk);
+  font-size: var(--step--1);
+  line-height: 1.7;
+}
+
+/* Compact rows: the "sent from this browser" panel and the related list under an article. */
+.row {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row[aria-current="page"] {
+  font-weight: 600;
+}
+
+.rowTitle {
+  font-size: var(--step-0);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.row:hover .rowTitle {
+  text-decoration: underline;
+}
+
+/* How a check works, as a numbered sidebar list. */
+.journey {
+  counter-reset: journey;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.journey li {
+  counter-increment: journey;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--step-0);
+  line-height: 1.5;
+}
+
+.journey li::before {
+  content: counter(journey, devanagari);
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--milk);
+  font-weight: 600;
+}
+
+/* ---------- the verdict as an article ---------- */
+
+.article {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-5) var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+@media (min-width: 48rem) {
+  .article {
+    padding: var(--space-6) var(--space-7);
+  }
+}
+
+.articleHead {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.headline {
+  font-family: var(--font-read);
+  font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.standfirst {
+  font-size: 1.25rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.byline strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.share {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.figure {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.figure img,
+.figure video {
+  width: 100%;
+  max-height: 32rem;
+  object-fit: contain;
+  border-radius: 8px;
+  background: var(--ink);
+}
+
+.figure figcaption {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+/* The reading column: Onlinekhabar's 22px / 1.8, narrowed to a comfortable measure. */
+.body {
+  max-width: 40em;
+  font-size: 1.25rem;
+  line-height: 1.8;
+}
+
+@media (min-width: 48rem) {
+  .body {
+    font-size: 1.375rem;
+  }
+}
+
+.body p + p {
+  margin-top: 1.2em;
+}
+
+.box {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40em;
+  padding: var(--space-4);
+  border-left: 4px solid var(--glacier);
+  background: var(--milk);
+  border-radius: 0 8px 8px 0;
+}
+
+.box h2 {
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.boxEn {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.section {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40em;
+}
+
+.section > h2 {
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.4;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--rule);
+}
+
+.sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sources li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.sources a {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.stance {
+  font-size: var(--step--1);
+  color: var(--silt);
+}
+
+.stance[data-stance="refutes"] {
+  color: var(--false);
+}
+
+.stance[data-stance="supports"] {
+  color: var(--true);
+}
+
+.post {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--rule);
+  font-size: var(--step-0);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.link {
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+
+/* Progress while a report is still being checked. */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  gap: var(--space-1);
+  padding: 0 0 var(--space-5) var(--space-6);
+  color: var(--silt);
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+.step::before {
+  content: "";
+  position: absolute;
+  left: 0.35rem;
+  top: 0.45em;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid var(--rule);
+  background: var(--paper);
+}
+
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0.71rem;
+  top: 1.4em;
+  bottom: 0;
+  width: 2px;
+  background: var(--rule);
+}
+
+.step[data-state="done"] {
+  color: var(--ink);
+}
+
+.step[data-state="done"]::before {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.step[data-state="done"]::after {
+  background: var(--ink);
+}
+
+.step[data-state="now"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.step[data-state="now"]::before {
+  border-color: var(--ink);
+  animation: pulse 1.6s var(--ease-in-out) infinite;
+}
+
+.stepTime {
+  font-size: var(--step--1);
+  font-weight: 400;
+  color: var(--silt);
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 6px var(--glacier-wash);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step[data-state="now"]::before {
+    animation: none;
+  }
+}
+
+/* ---------- motion: small, purposeful, and off for readers who ask for less ---------- */
+
+.nav a {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size var(--dur-short) var(--ease-out);
+}
+
+.nav a:hover,
+.nav a:focus-visible {
+  text-decoration: none;
+  background-size: 100% 1px;
+}
+
+.field input,
+.field textarea {
+  transition:
+    border-color var(--dur-micro) var(--ease-out),
+    box-shadow var(--dur-micro) var(--ease-out);
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--glacier-wash);
+  outline: none;
+}
+
+.submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.share {
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.share:hover {
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.share:active {
+  transform: scale(var(--press));
+}
+
+.share[data-done] {
+  animation: pop var(--dur-medium) var(--ease-out);
+}
+
+.thumb img,
+.thumb video {
+  transition: transform var(--dur-medium) var(--ease-out);
+}
+
+.card:hover .thumb img,
+.card:hover .thumb video,
+.lead:hover .thumb img,
+.lead:hover .thumb video {
+  transform: scale(1.04);
+}
+
+.cardTitle,
+.rowTitle {
+  text-decoration-color: transparent;
+  transition: text-decoration-color var(--dur-short) var(--ease-out);
+}
+
+.row {
+  transition: background var(--dur-micro) var(--ease-out);
+}
+
+.row:hover {
+  background: var(--glacier-wash);
+}
+
+/* Skeleton cards while the front page loads: the layout is there before the stories are. */
+.skeleton {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.skeleton span {
+  display: block;
+  height: 1rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--milk-deep) 0%, var(--paper) 50%, var(--milk-deep) 100%) 0 0 / 200% 100%;
+}
+
+.skeleton span:first-child {
+  width: 5rem;
+}
+
+.skeleton span:nth-child(2) {
+  height: 1.4rem;
+  width: 85%;
+}
+
+.skeleton span:last-child {
+  width: 60%;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--shift));
+  }
+}
+
+@keyframes pop {
+  40% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Sections arrive in reading order on load. */
+  .send,
+  .feed > .heading,
+  .lead,
+  .rail,
+  .articleHead,
+  .figure,
+  .body {
+    animation: rise var(--dur-medium) var(--ease-out) both;
+  }
+
+  .feed > .heading,
+  .articleHead {
+    animation-delay: 60ms;
+  }
+
+  .lead,
+  .figure {
+    animation-delay: 120ms;
+  }
+
+  .rail,
+  .body {
+    animation-delay: 180ms;
+  }
+
+  .skeleton span {
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  /* Cards and article sections rise as they scroll in, where the browser can tie animation
+     to scroll; elsewhere they are simply there. */
+  @supports (animation-timeline: view()) {
+    .card,
+    .section,
+    .box {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+}
+
+/* "Load more" under the front page's stories. */
+.loadMore {
+  justify-self: center;
+  min-height: 48px;
+  padding: var(--space-2) var(--space-6);
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--step-0);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.loadMore:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--milk);
+}
+
+.loadMore:active {
+  transform: scale(var(--press));
+}
+
+.loadMore:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* In the closed "already have the photo or video?" line, both languages sit on one line. */
+.more summary .en {
+  display: inline;
+}
+
+.more summary .en::before {
+  content: " · ";
+}

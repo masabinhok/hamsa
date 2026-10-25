@@ -14,18 +14,30 @@ import httpx
 from qdrant_client.http.exceptions import ResponseHandlingException
 
 from app.ingest.frames import Frame, frames_of
+from app.pipeline.claim_reviews import FindReviews, Vet, add_reviews, vetted
 from app.pipeline.contracts import (
     Claim,
+    Duplicate,
     Evidence,
     MediaMatch,
+    Passage,
     RouteDecision,
     Stage,
     StageFailure,
     Verdict,
 )
+from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
-from app.pipeline.retrieve import EmbedText, EvidenceStore, retrieve
+from app.pipeline.retrieve import (
+    MAX_PASSAGES,
+    EmbedText,
+    EvidenceStore,
+    news_since,
+    news_until,
+    retrieve,
+)
 from app.pipeline.verdict import Reasoner, judge
+from app.pipeline.web_search import FindWeb, add_web
 from app.router.route import StageOutputs, route
 
 Extract = Callable[[str | None, Sequence[Frame]], Claim]
@@ -39,7 +51,22 @@ class Pipeline:
     evidence: EvidenceStore
     embed_text: EmbedText
     reasoners: Sequence[tuple[Reasoner, str]]
-    incident_start: date
+    # How many reasoners come before the local fallback: 1 with Groq, 0 offline.
+    hosted: int = 1
+    nepali_checker: tuple[Reasoner, str] | None = None
+    # Fact-checks published anywhere (ADR 0012); None without an API key.
+    find_reviews: FindReviews | None = None
+    # Drops corpus fact-checks about other posts; None without a judging model.
+    vet_fact_checks: Vet | None = None
+    # Pages found by web search; None without SearXNG.
+    find_web: FindWeb | None = None
+    # What X or TikTok shows on the post itself (ADR 0017), from the post's link.
+    find_on_post: Callable[[str | None], list[Passage]] | None = None
+
+
+def add_on_post(evidence: Evidence, found: list[Passage]) -> Evidence:
+    """What the platform shows on this post goes first: it is about this post, not another."""
+    return Evidence(passages=(found + evidence.passages)[:MAX_PASSAGES])
 
 
 @dataclass
@@ -57,9 +84,15 @@ def is_transient(error: Exception) -> bool:
 
 
 def run(
-    pipeline: Pipeline, text: str | None, media: Sequence[Path], seen_on: date | None = None
+    pipeline: Pipeline,
+    text: str | None,
+    media: Sequence[Path],
+    seen_on: date | None = None,
+    open_claims: Sequence[OpenClaim] = (),
+    source_url: str | None = None,
 ) -> Result:
-    """`seen_on` is the post's date when known (eval items); otherwise today, the submission."""
+    """`seen_on` is the post's date when known (eval items); otherwise today, the submission.
+    `open_claims` are the cases already on the desk, for the duplicate check."""
     seconds: dict[str, float] = {}
     failures: list[StageFailure] = []
 
@@ -81,17 +114,20 @@ def run(
 
     def finish(
         claim: Claim | None = None,
+        duplicate: Duplicate | None = None,
         media_match: MediaMatch | None = None,
         evidence: Evidence | None = None,
         verdict: Verdict | None = None,
     ) -> Result:
         outputs = StageOutputs(
             failures=tuple(failures),
+            duplicate=duplicate,
             claim=claim,
             media_match=media_match,
             evidence=evidence,
             verdict=verdict,
             seen_on=seen_on or date.today(),
+            posted_on=seen_on,
         )
         return Result(outputs=outputs, decision=route(outputs), seconds=seconds)
 
@@ -103,18 +139,48 @@ def run(
     if claim is None or not claim.checkable:
         return finish(claim=claim)
 
+    if open_claims:
+        duplicate = stage(
+            Stage.DEDUP, lambda: claim_duplicate(claim, open_claims, pipeline.embed_text)
+        )
+        if duplicate is not None or failures:
+            return finish(claim=claim, duplicate=duplicate)
+
     matched: MediaMatch | None = stage(
         Stage.MEDIA_MATCH, lambda: match_media(frames, pipeline.archive, pipeline.embed_image)
     )
+    since, until = news_since(claim, seen_on or date.today()), news_until(claim, seen_on)
     evidence: Evidence | None = stage(
         Stage.RETRIEVE,
-        lambda: retrieve(claim, pipeline.evidence, pipeline.embed_text, pipeline.incident_start),
+        lambda: add_on_post(
+            add_web(
+                add_reviews(
+                    vetted(
+                        claim,
+                        retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
+                        pipeline.vet_fact_checks,
+                    ),
+                    pipeline.find_reviews(claim) if pipeline.find_reviews else [],
+                ),
+                pipeline.find_web(claim, since, until) if pipeline.find_web else [],
+            ),
+            pipeline.find_on_post(source_url) if pipeline.find_on_post else [],
+        ),
     )
     if matched is None or evidence is None:
         return finish(claim=claim, media_match=matched, evidence=evidence)
 
     verdict: Verdict | None = stage(
         Stage.VERDICT,
-        lambda: judge(claim, matched, evidence, pipeline.reasoners, has_media=bool(frames)),
+        lambda: judge(
+            claim,
+            matched,
+            evidence,
+            pipeline.reasoners,
+            has_media=bool(frames),
+            posted_on=seen_on,
+            checker=pipeline.nepali_checker,
+            hosted=pipeline.hosted,
+        ),
     )
     return finish(claim=claim, media_match=matched, evidence=evidence, verdict=verdict)

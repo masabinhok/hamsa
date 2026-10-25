@@ -1,19 +1,22 @@
 """Case store operations. Every status change writes a CaseEvent (architecture 4)."""
 
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import BaseModel
-from sqlalchemy import Engine, bindparam, create_engine, event, select, text
+from sqlalchemy import Engine, bindparam, create_engine, delete, event, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.pipeline.contracts import (
     Claim,
     Duplicate,
+    DuplicateBasis,
     Evidence,
     MediaMatch,
     Route,
@@ -22,6 +25,7 @@ from app.pipeline.contracts import (
     Verdict,
     VerdictLabel,
 )
+from app.pipeline.duplicate import OpenClaim
 from app.router.route import StageOutputs
 from app.store.models import (
     Base,
@@ -31,7 +35,9 @@ from app.store.models import (
     Channel,
     Job,
     JobState,
+    Lesson,
     Media,
+    PostId,
     UTCDateTime,
     utcnow,
 )
@@ -56,7 +62,7 @@ def _sqlite_pragmas(connection: Any, _record: Any) -> None:
     # WAL lets the API read while the worker writes; they are separate processes.
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA busy_timeout=30000")  # the bots, api and worker share one file
     cursor.close()
 
 
@@ -95,6 +101,18 @@ def create_case(
     session.add_all([case, Job(case_id=case_id)])
     _event(session, case, SYSTEM, None, CaseStatus.RECEIVED, f"submitted via {channel}")
     return case
+
+
+def add_sent_media(session: Session, case: Case, media: list[StoredMedia]) -> None:
+    """The submitter sent the file behind a link the worker could not open: check it again,
+    on the same case, so the desk is not left with an empty one beside a new one."""
+    case.media += [
+        Media(filename=m.filename, sha256=m.sha256, size_bytes=m.size_bytes) for m in media
+    ]
+    job = session.scalars(select(Job).where(Job.case_id == case.id)).one()
+    job.state, job.attempts, job.not_before = JobState.QUEUED, 0, utcnow()
+    job.lease_until = job.last_error = None
+    _event(session, case, SYSTEM, case.status, CaseStatus.RECEIVED, "the sender added the media")
 
 
 def claim_job(session: Session, now: datetime | None = None) -> tuple[int, str] | None:
@@ -178,12 +196,15 @@ def publish(
     rationale_en: str,
     rationale_ne: str,
     note: str | None,
+    original_url: str | None = None,
 ) -> None:
     if case.status is not CaseStatus.ROUTED:
         raise DecisionError(f"case is {case.status}, only routed cases can be published")
     case.final_label = label.value
     case.final_rationale_en, case.final_rationale_ne = rationale_en, rationale_ne
     _event(session, case, checker, case.status, CaseStatus.PUBLISHED, note)
+    # Every verdict teaches the archive, so the next repost is matched without a checker.
+    session.add(Lesson(case_id=case.id, original_url=original_url))
 
 
 def reject(session: Session, case: Case, checker: str, note: str) -> None:
@@ -197,6 +218,8 @@ def reopen(session: Session, case: Case, checker: str, note: str) -> None:
     if case.status not in (CaseStatus.PUBLISHED, CaseStatus.REJECTED):
         raise DecisionError(f"case is {case.status}, only closed cases can be reopened")
     case.final_label = case.final_rationale_en = case.final_rationale_ne = None
+    # The verdict is withdrawn, so a lesson not yet taught must not teach it.
+    session.execute(delete(Lesson).where(Lesson.case_id == case.id, Lesson.done_at.is_(None)))
     _event(session, case, checker, case.status, CaseStatus.ROUTED, note)
 
 
@@ -210,14 +233,112 @@ def desk_queue(session: Session, route: Route | None = None) -> list[Case]:
     return sorted(cases, key=lambda c: order.index(Route(c.route)) if c.route else len(order))
 
 
-def published(session: Session, limit: int = 50) -> list[Case]:
-    query = (
-        select(Case)
-        .where(Case.status == CaseStatus.PUBLISHED)
-        .order_by(Case.updated_at.desc())
-        .limit(limit)
-    )
+def published(
+    session: Session, limit: int = 50, before: tuple[datetime, str] | None = None
+) -> list[Case]:
+    """Newest first. `before` is the last (time, id) already shown: ties on time are broken by
+    id, so a page never skips or repeats a verdict published in the same instant."""
+    query = select(Case).where(Case.status == CaseStatus.PUBLISHED)
+    if before is not None:
+        at, case_id = before
+        query = query.where(
+            (Case.updated_at < at) | ((Case.updated_at == at) & (Case.id < case_id))
+        )
+    query = query.order_by(Case.updated_at.desc(), Case.id.desc()).limit(limit)
     return list(session.scalars(query))
+
+
+def published_count(session: Session) -> int:
+    return session.scalar(select(func.count()).where(Case.status == CaseStatus.PUBLISHED)) or 0
+
+
+OPEN = (CaseStatus.RECEIVED, CaseStatus.PROCESSING, CaseStatus.ROUTED)
+
+
+DECIDED = (CaseStatus.PUBLISHED, CaseStatus.REJECTED)
+# Query parameters that say who shared a post or how, never which post it is.
+TRACKING = frozenset(
+    {"fbclid", "mibextid", "rdid", "ref", "si", "feature", "t", "s", "igsh", "igshid"}
+    | {"is_from_webapp", "sender_device", "_r", "_t", "share_url", "img_index"}
+)
+
+
+def normalize_url(url: str) -> str:
+    """One spelling per post link: the same post forwarded from the app, the mobile site or
+    a share sheet differs only in host prefix and tracking parameters."""
+    parts = urlsplit(url.strip())
+    host = parts.hostname or ""
+    host = re.sub(r"^(m|mobile|web|vm)\.", "www.", host)
+    host = {"twitter.com": "x.com", "www.twitter.com": "x.com", "www.x.com": "x.com"}.get(
+        host, host
+    )
+    path = parts.path.rstrip("/")
+    if host == "youtu.be":
+        host, path, query = "www.youtube.com", "/watch", [("v", path.lstrip("/"))]
+    else:
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parts.query)
+            if key.lower() not in TRACKING and not key.lower().startswith(("utm_", "__"))
+        ]
+    return urlunsplit(("https", host, path, urlencode(sorted(query)), ""))
+
+
+def same_post(session: Session, case: Case) -> Duplicate | None:
+    """The earliest earlier report of this post, open or decided, for the case to merge into.
+
+    The same link or platform post id is the same post. The same file is too while that
+    report is open; once it is decided, only with the same words or none: a new caption can
+    make genuine footage a false claim, so that copy is checked afresh (the archive knows the
+    footage). Only earlier cases: otherwise a report would merge into its own later copy.
+    """
+    earlier = select(Case).where(Case.created_at < case.created_at).order_by(Case.created_at)
+    found: list[tuple[Case, DuplicateBasis]] = []
+    if case.source_url:
+        link = normalize_url(case.source_url)
+        # shortcut: normalises every earlier link per case; store it once there are thousands.
+        linked = session.scalars(earlier.where(Case.source_url.is_not(None)))
+        found += [
+            (c, DuplicateBasis.LINK) for c in linked if normalize_url(c.source_url or "") == link
+        ]
+    if post_id := session.scalar(select(PostId.post_id).where(PostId.case_id == case.id)):
+        same_id = session.scalars(earlier.join(PostId).where(PostId.post_id == post_id))
+        found += [(c, DuplicateBasis.LINK) for c in same_id]
+    if digests := [m.sha256 for m in case.media]:
+        same_file = session.scalars(earlier.join(Media).where(Media.sha256.in_(digests)))
+        found += [(c, DuplicateBasis.MEDIA) for c in same_file]
+
+    for earliest, basis in sorted(found, key=lambda pair: pair[0].created_at):
+        target = answered_by(session, earliest)
+        if target.status in OPEN or (
+            target.status in DECIDED
+            and (basis is DuplicateBasis.LINK or _same_words(case.text, target.text))
+        ):
+            return Duplicate(case_id=target.id, basis=basis)
+    return None
+
+
+def answered_by(session: Session, case: Case) -> Case:
+    """The case whose verdict answers this one: itself, or the report it was merged into."""
+    for _ in range(5):  # merges point at earlier cases, so this is a short chain
+        if case.merged_into is None:
+            break
+        case = session.get_one(Case, case.merged_into)
+    return case
+
+
+def _same_words(new: str | None, old: str | None) -> bool:
+    return not (new and new.strip()) or " ".join(new.split()) == " ".join((old or "").split())
+
+
+def open_claims(session: Session) -> list[OpenClaim]:
+    """Claims of the cases waiting on the desk, for the pipeline's duplicate check."""
+    claims: list[OpenClaim] = []
+    for case in session.scalars(select(Case).where(Case.status == CaseStatus.ROUTED)):
+        claim = outputs_from_json(case.outputs).claim if case.outputs else None
+        if claim and claim.checkable:
+            claims.append(OpenClaim(case.id, claim.claim_en, tuple(claim.places)))
+    return claims
 
 
 def outputs_to_json(outputs: StageOutputs) -> dict[str, Any]:
@@ -231,6 +352,8 @@ def outputs_to_json(outputs: StageOutputs) -> dict[str, Any]:
         "media_match": dump(outputs.media_match),
         "evidence": dump(outputs.evidence),
         "verdict": dump(outputs.verdict),
+        "seen_on": outputs.seen_on.isoformat() if outputs.seen_on else None,
+        "posted_on": outputs.posted_on.isoformat() if outputs.posted_on else None,
     }
 
 
@@ -245,7 +368,14 @@ def outputs_from_json(data: dict[str, Any]) -> StageOutputs:
         media_match=load(MediaMatch, data["media_match"]),
         evidence=load(Evidence, data["evidence"]),
         verdict=load(Verdict, data["verdict"]),
+        # Absent from cases stored before the post's date was kept.
+        seen_on=_day(data.get("seen_on")),
+        posted_on=_day(data.get("posted_on")),
     )
+
+
+def _day(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
 
 
 def _event(

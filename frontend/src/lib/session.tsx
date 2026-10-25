@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
 
-// The checker's token and name live in sessionStorage: closing the tab signs out.
+// The checker's token and name live in sessionStorage, so closing the tab signs out, unless
+// they chose to stay signed in on this device: then localStorage keeps them.
 export interface Checker {
   token: string;
   name: string;
@@ -13,7 +14,7 @@ const listeners = new Set<() => void>();
 
 function read(): string | null {
   try {
-    return sessionStorage.getItem(KEY);
+    return sessionStorage.getItem(KEY) ?? localStorage.getItem(KEY);
   } catch {
     return null;
   }
@@ -24,9 +25,9 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function signIn(checker: Checker): void {
+export function signIn(checker: Checker, remember = false): void {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(checker));
+    (remember ? localStorage : sessionStorage).setItem(KEY, JSON.stringify(checker));
   } catch {
     // Storage blocked: the session lasts until the next reload.
   }
@@ -37,6 +38,7 @@ export function signIn(checker: Checker): void {
 export function signOut(): void {
   try {
     sessionStorage.removeItem(KEY);
+    localStorage.removeItem(KEY);
   } catch {}
   cache = null;
   listeners.forEach((listener) => listener());

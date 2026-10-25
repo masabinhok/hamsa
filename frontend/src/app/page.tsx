@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { Site } from "@/components/Site";
 
 export default function Home() {
-  redirect("/desk");
+  return <Site />;
 }

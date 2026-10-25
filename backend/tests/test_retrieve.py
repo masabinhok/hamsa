@@ -16,6 +16,8 @@ from app.pipeline.retrieve import (
     MAX_PER_SOURCE,
     EvidenceStore,
     chunk,
+    news_since,
+    news_until,
     passage_id,
     queries_for,
     retrieve,
@@ -184,3 +186,25 @@ def test_passages_carry_their_headline(store: EvidenceStore) -> None:
     store.add([article("debunk", "flood video is from Alaska", "2026-08-28T09:00:00")], fake_embed)
     [found] = retrieve(claim(claim_en="flood video"), store, fake_embed, since=INCIDENT).passages
     assert found.title == "debunk"
+
+
+def test_news_window_follows_the_claim_not_a_fixed_event() -> None:
+    today = date(2026, 10, 14)
+    assert news_since(claim(), today) == date(2026, 9, 14)
+    dated = claim(claimed_date="2024-09-28")  # a post about the 2024 Kathmandu flood
+    assert news_since(dated, today) == date(2024, 8, 29)
+
+
+def test_news_long_after_the_post_is_about_another_event(store: EvidenceStore) -> None:
+    store.add(
+        [
+            article("rasuwa", "Nepal flood Rasuwa", "2026-08-28T09:00:00"),
+            article("budhi", "Nepal flood Budhi Gandaki", "2026-10-11T09:00:00"),
+        ],
+        fake_embed,
+    )
+    posted = date(2026, 8, 27)  # "pray for Nepal" with flood footage, no place named
+    until = news_until(claim(), posted)
+    evidence = retrieve(claim(claim_en="Nepal flood"), store, fake_embed, INCIDENT, until)
+    assert {str(p.url) for p in evidence.passages} == {"https://news.test/rasuwa"}
+    assert news_until(claim(), None) is None  # undated: no end, as before

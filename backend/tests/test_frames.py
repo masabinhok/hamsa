@@ -1,9 +1,16 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
-from app.ingest.frames import MAX_SHORT_SIDE, frames_from_image, frames_of, keyframes_from_video
+from app.ingest.frames import (
+    BLANK_STD,
+    MAX_SHORT_SIDE,
+    frames_from_image,
+    frames_of,
+    keyframes_from_video,
+)
 from tests.images import photo, write_video
 
 
@@ -43,6 +50,17 @@ def test_static_video_is_padded_with_evenly_spaced_frames(tmp_path: Path) -> Non
     assert len(frames) == 4
     assert frames[0].timestamp_s == 0.0
     assert frames[-1].timestamp_s >= 4.0
+
+
+def test_blank_frames_are_never_keyframes(tmp_path: Path) -> None:
+    black = Image.new("RGB", photo(1).size)
+    video = write_video(tmp_path / "fade.mp4", [black, photo(1), black, photo(2), black], 2)
+
+    frames = keyframes_from_video(video, max_frames=6)
+
+    assert frames
+    assert all(np.asarray(f.image.convert("L")).std() > BLANK_STD for f in frames)
+    assert frames[0].timestamp_s == 2.0  # the first shown frame stands in for the first
 
 
 def test_undecodable_video_raises(tmp_path: Path) -> None:

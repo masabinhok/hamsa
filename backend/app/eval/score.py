@@ -11,9 +11,11 @@ import argparse
 import json
 import statistics
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +26,10 @@ from app.eval.dataset import EvalItem, MediaKind, Tactic, Verdict, load_items
 from app.pipeline.__main__ import build_pipeline
 from app.pipeline.contracts import Route, RouteDecision, SourceKind, VerdictLabel
 from app.pipeline.retrieve import EvidenceStore
-from app.pipeline.run import run
+from app.pipeline.run import Result, run
 from app.router.route import DEFAULT_THRESHOLDS, StageOutputs, Thresholds, recycled_hits, route
 from app.store.cases import outputs_from_json, outputs_to_json
+from app.worker import BACKOFF
 
 EVAL_DIR = REPO_ROOT / "data" / "eval"
 RUNS_DIR = EVAL_DIR / "runs"
@@ -45,10 +48,12 @@ class Scored:
 class WithoutFactChecks(EvidenceStore):
     """Simulates a post nobody has debunked yet."""
 
-    def search(self, vector: list[float], since: date) -> list[dict[str, Any]]:
+    def search(
+        self, vector: list[float], since: date, until: date | None = None
+    ) -> list[dict[str, Any]]:
         # shortcut: filters after the candidate limit, so fewer passages reach the reranker;
         # fine for an ablation, query with a must_not filter if this becomes a headline number.
-        kept = super().search(vector, since)
+        kept = super().search(vector, since, until)
         return [p for p in kept if p.get("source_kind") != SourceKind.FACT_CHECK.value]
 
 
@@ -57,7 +62,7 @@ def in_split(item: EvalItem, split: str) -> bool:
     return split == "all" or (number <= TUNE_LAST) == (split == "tune")
 
 
-def _refuted(label: VerdictLabel | Verdict | None) -> bool:
+def is_refuted(label: VerdictLabel | Verdict | None) -> bool:
     return label is not None and label.value in {r.value for r in REFUTED}
 
 
@@ -66,10 +71,10 @@ def _correct(item: EvalItem, decision: RouteDecision) -> bool:
     label = decision.proposed_label
     if label is None:
         return False
-    return label.value == item.verdict.value or (_refuted(item.verdict) and _refuted(label))
+    return label.value == item.verdict.value or (is_refuted(item.verdict) and is_refuted(label))
 
 
-def _ratio(hits: int, total: int) -> str:
+def ratio(hits: int, total: int) -> str:
     return f"{hits}/{total} ({hits / total:.0%})" if total else "n/a"
 
 
@@ -81,7 +86,7 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
         d.proposed_label is not None and d.proposed_label.value == r.item.verdict.value
         for r, d in pairs
     )
-    refuted = sum(_refuted(r.item.verdict) == _refuted(d.proposed_label) for r, d in pairs)
+    refuted = sum(is_refuted(r.item.verdict) == is_refuted(d.proposed_label) for r, d in pairs)
 
     media = [
         (r, bool(recycled_hits(r.outputs, t))) for r in rows if r.item.kind is not MediaKind.TEXT
@@ -105,12 +110,12 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
 
     lines = [
         f"items: {len(rows)}",
-        f"verdict exact agreement: {_ratio(exact, len(rows))}",
-        f"refuted-or-not agreement: {_ratio(refuted, len(rows))}",
-        f"recycled media precision: {_ratio(true_positives, len(flagged))}",
-        f"recycled media recall: {_ratio(true_positives, len(truly))}",
-        f"fast-track precision: {_ratio(fast_correct, len(fast))} (target 95%)",
-        f"sent to a human: {_ratio(to_human, len(rows))}",
+        f"verdict exact agreement: {ratio(exact, len(rows))}",
+        f"refuted-or-not agreement: {ratio(refuted, len(rows))}",
+        f"recycled media precision: {ratio(true_positives, len(flagged))}",
+        f"recycled media recall: {ratio(true_positives, len(truly))}",
+        f"fast-track precision: {ratio(fast_correct, len(fast))} (target 95%)",
+        f"sent to a human: {ratio(to_human, len(rows))}",
         f"latency: p50 {p50:.1f} s, p95 {p95:.1f} s",
         "",
         # safe: fast-tracked with the right label, or left to a human.
@@ -125,6 +130,26 @@ def summarize(rows: Sequence[Scored], t: Thresholds = DEFAULT_THRESHOLDS) -> lis
             f"| {r.item.id} | {r.item.verdict.value} | {label} | {d.route.value} | {mark} |"
         )
     return lines
+
+
+# Groq's free tier allows 8000 tokens a minute per model; back-to-back cases overflow it
+# and fall back to the local model, which is not what a live case gets (2026-10-23).
+PACE_S = 60
+
+
+def with_retries(
+    attempt: Callable[[], Result], sleep: Callable[[float], None] = time.sleep
+) -> Result:
+    """Retry transient failures (a dropped Ollama connection, a rate limit) with the
+    worker's backoff, so the eval scores the pipeline as deployed, not one unlucky try."""
+    result = attempt()
+    for delay in BACKOFF:
+        if not any(f.transient for f in result.outputs.failures):
+            break
+        print(f"  transient failure, retrying in {delay}", flush=True)
+        sleep(delay.total_seconds())
+        result = attempt()
+    return result
 
 
 def _load(path: Path, item: EvalItem) -> Scored:
@@ -156,15 +181,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 pipeline = build_pipeline(settings)
                 if args.no_fact_checks:
                     store = WithoutFactChecks(QdrantClient(url=str(settings.qdrant_url)))
-                    pipeline = replace(pipeline, evidence=store)
+                    pipeline = replace(pipeline, evidence=store, find_reviews=None)
             media = [EVAL_DIR / "media" / item.media_file] if item.media_file else []
-            result = run(pipeline, item.claim_text, media, seen_on=item.posted_on)
+            result = with_retries(
+                partial(run, pipeline, item.claim_text, media, seen_on=item.posted_on)
+            )
             payload = {
                 "outputs": outputs_to_json(result.outputs),
                 "seconds": round(sum(result.seconds.values()), 2),
             }
             cached.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
             print(f"  ran {item.id}: {result.decision.route.value}", flush=True)
+            time.sleep(PACE_S)
         rows.append(_load(cached, item))
 
     lines = summarize(rows)

@@ -4,13 +4,16 @@ Public: submit a post, check its status, read published verdicts.
 Desk (checker token): the queue, full case detail with model drafts, and decisions.
 """
 
+import io
 import secrets
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -19,13 +22,16 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from PIL import Image, ImageOps
 from pydantic import HttpUrl, SecretStr, TypeAdapter, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -35,29 +41,48 @@ from app.api.schemas import (
     DeskCase,
     DeskEvent,
     DeskSummary,
+    EarlierFootage,
     PublicCase,
+    PublicClaim,
+    PublicStep,
     PublishedVerdict,
     Source,
+    TranslateRequest,
+    TranslateResponse,
+    VerdictPage,
 )
-from app.config import get_settings
+from app.checkers import signed_in
+from app.config import REPO_ROOT, get_settings
+from app.ingest.download import is_platform_url
+from app.llm.groq import GroqClient, ReasonerUnavailable
+from app.llm.ollama import OllamaClient
+from app.llm.structured import StructuredOutputError
 from app.pipeline.contracts import Route, VerdictLabel
+from app.pipeline.verdict import Reasoner, translate
+from app.router.route import is_strong_match
 from app.store.cases import (
     Database,
     DecisionError,
     StoredMedia,
+    add_sent_media,
+    answered_by,
     create_case,
     desk_queue,
     new_case_id,
     outputs_from_json,
     publish,
     published,
+    published_count,
     reject,
     reopen,
     save_media,
 )
-from app.store.models import Case, CaseEvent, CaseStatus, Channel
+from app.store.models import Case, CaseEvent, CaseStatus, Channel, Checker
 
+PUBLIC_IMAGE_FORMATS = {".jpg": "JPEG", ".png": "PNG", ".webp": "WEBP"}
 SUBMISSIONS_PER_MINUTE = 10  # per client IP; a fact-check desk is not a bulk API
+# Checker codes are unguessable, but the operator picks DESK_TOKEN and may pick a weak one.
+FAILED_SIGN_INS_PER_MINUTE = 10
 MAX_FILES = 4
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_TEXT_CHARS = 5000
@@ -86,14 +111,33 @@ def get_session(request: Request) -> Iterator[Session]:
 
 
 def require_checker(
-    request: Request, authorization: Annotated[str | None, Header()] = None
-) -> None:
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> str | None:
+    """The signed-in checker's name, or None for the operator's DESK_TOKEN."""
     token: SecretStr | None = request.app.state.desk_token
-    if token is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "desk disabled: set DESK_TOKEN")
-    expected = f"Bearer {token.get_secret_value()}"
-    if authorization is None or not secrets.compare_digest(authorization, expected):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "checker token required")
+    if token is None and session.scalar(select(Checker.id).limit(1)) is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "desk disabled: add a checker (python -m app.checkers add NAME) or set DESK_TOKEN",
+        )
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code required")
+    failures: RateLimiter = request.app.state.failed_sign_ins
+    client, now = client_ip(request), time.monotonic()
+    # Checked before the code, so a blocked guesser learns nothing even from a right guess.
+    if failures.exceeded(client, now):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "too many wrong codes, wait a minute"
+        )
+    code = authorization.removeprefix("Bearer ")
+    if token is not None and secrets.compare_digest(code, token.get_secret_value()):
+        return None
+    if name := signed_in(session, code):
+        return name
+    failures.allow(client, now)  # records the failure
+    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access code not recognised")
 
 
 class RateLimiter:
@@ -103,20 +147,26 @@ class RateLimiter:
         self.limit, self.window_s = limit, window_s
         self._hits: dict[str, deque[float]] = defaultdict(deque)
 
-    def allow(self, key: str, now: float) -> bool:
+    def exceeded(self, key: str, now: float) -> bool:
         hits = self._hits[key]
         while hits and hits[0] <= now - self.window_s:
             hits.popleft()
-        if len(hits) >= self.limit:
+        return len(hits) >= self.limit
+
+    def allow(self, key: str, now: float) -> bool:
+        if self.exceeded(key, now):
             return False
-        hits.append(now)
+        self._hits[key].append(now)
         return True
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 def limit_submissions(request: Request) -> None:
     limiter: RateLimiter = request.app.state.limiter
-    client = request.client.host if request.client else "unknown"
-    if not limiter.allow(client, time.monotonic()):
+    if not limiter.allow(client_ip(request), time.monotonic()):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many submissions, wait a minute"
         )
@@ -156,42 +206,95 @@ async def submit(
             url = str(TypeAdapter(HttpUrl).validate_python(url))
         except ValidationError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid url") from error
-    if not (text or uploads):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send text or media")
+        if not is_platform_url(url):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "only Facebook, TikTok, X, YouTube or Instagram post links",
+            )
+    if not (text or uploads or url):  # a link alone is fetched by the worker (ADR 0010)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send text, a link, or media")
     if len(uploads) > MAX_FILES:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"at most {MAX_FILES} files")
 
-    media_root: Path = request.app.state.media_root
     case_id = new_case_id()
-    stored: list[StoredMedia] = []
-    for upload in uploads:
-        data = await upload.read(MAX_FILE_BYTES + 1)
-        if len(data) > MAX_FILE_BYTES:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file over 100 MB")
-        suffix = sniff_suffix(data)
-        if suffix is None:
-            raise HTTPException(
-                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only jpeg, png, webp, mp4, webm"
-            )
-        stored.append(save_media(media_root, case_id, data, suffix))
-
+    stored = await save_uploads(request, case_id, uploads)
     create_case(session, case_id, Channel.WEB, text, url, stored)
     return CaseCreated(id=case_id, status=CaseStatus.RECEIVED)
 
 
+@public.post("/cases/{case_id}/media", dependencies=[Depends(limit_submissions)])
+async def send_media(
+    request: Request,
+    session: DbSession,
+    case_id: str,
+    files: Annotated[list[UploadFile], File()],
+) -> PublicCase:
+    """The file behind a link the worker could not open, sent from the report page."""
+    case = get_case(session, case_id)
+    if case.status is not CaseStatus.ROUTED or not needs_media(case):
+        raise HTTPException(status.HTTP_409_CONFLICT, "this report is not waiting for media")
+    if not files or len(files) > MAX_FILES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"send 1 to {MAX_FILES} files")
+    add_sent_media(session, case, await save_uploads(request, case_id, files))
+    session.flush()
+    return public_view(session, case)
+
+
 @public.get("/cases/{case_id}")
 def public_case(session: DbSession, case_id: str) -> PublicCase:
+    return public_view(session, get_case(session, case_id))
+
+
+@public.get("/cases/{case_id}/media/{name}")
+def public_media(request: Request, session: DbSession, case_id: str, name: str) -> Response:
+    """A post's upload, once a checker has published: unreviewed uploads could be anything."""
     case = get_case(session, case_id)
-    verdict = published_verdict(case) if case.status is CaseStatus.PUBLISHED else None
-    return PublicCase(id=case.id, status=case.status, verdict=verdict)
+    if case.status is not CaseStatus.PUBLISHED or name not in {m.filename for m in case.media}:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such media")
+    media_root: Path = request.app.state.media_root
+    path = media_root / case_id / name
+    if path.suffix not in PUBLIC_IMAGE_FORMATS:
+        return FileResponse(path)
+    # A reader's photo can carry their home's GPS position; the public copy drops all
+    # metadata, while the desk keeps the original as evidence.
+    with Image.open(path) as opened:
+        image = ImageOps.exif_transpose(opened)
+        image.info = {}
+        buffer = io.BytesIO()
+        image.save(buffer, format=PUBLIC_IMAGE_FORMATS[path.suffix], quality=95)
+    return Response(
+        buffer.getvalue(), media_type=f"image/{PUBLIC_IMAGE_FORMATS[path.suffix].lower()}"
+    )
 
 
 @public.get("/verdicts")
-def verdicts(session: DbSession) -> list[PublicCase]:
-    return [
-        PublicCase(id=c.id, status=c.status, verdict=published_verdict(c))
-        for c in published(session)
-    ]
+def verdicts(
+    session: DbSession,
+    before: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 12,
+) -> VerdictPage:
+    """Published verdicts, newest first, a page at a time ("Load more" on the site)."""
+    cursor = None
+    if before is not None:
+        at, _, case_id = before.rpartition("~")
+        try:
+            cursor = (datetime.fromisoformat(at), case_id)
+        except ValueError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "bad cursor") from error
+    rows = published(session, limit + 1, cursor)  # one extra says whether more remain
+    page = rows[:limit]
+    last = page[-1] if page and len(rows) > limit else None
+    return VerdictPage(
+        items=[public_view(session, c) for c in page],
+        next=f"{last.updated_at.isoformat()}~{last.id}" if last else None,
+        total=published_count(session),
+    )
+
+
+@desk.get("/me")
+def me(who: Annotated[str | None, Depends(require_checker)]) -> dict[str, str | None]:
+    """Who this access code belongs to; None means the operator token, which names nobody."""
+    return {"name": who}
 
 
 @desk.get("/queue")
@@ -213,10 +316,58 @@ def media(request: Request, session: DbSession, case_id: str, name: str) -> File
     return FileResponse(media_root / case_id / name)
 
 
+@desk.get("/cases/{case_id}/archive/{archive_id}")
+def archive_media(
+    request: Request, session: DbSession, case_id: str, archive_id: str
+) -> FileResponse:
+    """The archive original behind one of this case's matches, for the side-by-side view."""
+    case = get_case(session, case_id)
+    matched = outputs_from_json(case.outputs).media_match if case.outputs else None
+    hits = matched.hits if matched else []
+    media = next((h.archive_media for h in hits if h.archive_id == archive_id), None)
+    data_root: Path = request.app.state.data_root
+    path = (data_root / media).resolve() if media else None
+    if path is None or not path.is_relative_to(data_root.resolve()) or not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no archive media for this match")
+    return FileResponse(path)
+
+
+@desk.post("/translate")
+def translate_rationale(request: Request, body: TranslateRequest) -> TranslateResponse:
+    """Checkers write the rationale in English; the public also reads it in Nepali."""
+    translator: tuple[Reasoner, str] | None = request.app.state.translator
+    if translator is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "translation needs a model")
+    try:
+        nepali, issue = translate(body.english, translator, request.app.state.nepali_checker)
+    except (ReasonerUnavailable, StructuredOutputError, httpx.HTTPError) as error:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "translation failed; write the Nepali by hand"
+        ) from error
+    return TranslateResponse(nepali=nepali, issue=issue)
+
+
 @desk.post("/cases/{case_id}/decision")
-def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
+def decide(
+    session: DbSession,
+    case_id: str,
+    body: DecisionRequest,
+    who: Annotated[str | None, Depends(require_checker)],
+) -> DeskCase:
+    # A checker's own code names them; only the operator token may name someone.
+    checker = who or (body.checker or "").strip()
+    if not checker:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "say who decided")
     case = get_case(session, case_id)
     draft = _draft(case) or {}
+    relabelled = body.label is not None and body.label.value != draft.get("label")
+    if body.action is Action.PUBLISH and relabelled and draft and not body.rationale_en:
+        # The draft's reasoning argues for its own label; published beside another one, the
+        # verdict contradicts itself (two cases went out "true" explaining why they were false).
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "the label differs from the draft: write the reasoning that goes with it",
+        )
     try:
         if body.action is Action.PUBLISH:
             label = body.label or (VerdictLabel(draft["label"]) if "label" in draft else None)
@@ -224,11 +375,12 @@ def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
             rationale_ne = body.rationale_ne or draft.get("rationale_ne")
             if label is None or not rationale_en or not rationale_ne:
                 raise DecisionError("no draft to publish: give label and both rationales")
-            publish(session, case, body.checker, label, rationale_en, rationale_ne, body.note)
+            original = str(body.original_url) if body.original_url else None
+            publish(session, case, checker, label, rationale_en, rationale_ne, body.note, original)
         elif body.action is Action.REJECT:
-            reject(session, case, body.checker, body.note or "rejected")
+            reject(session, case, checker, body.note or "rejected")
         else:
-            reopen(session, case, body.checker, body.note or "reopened")
+            reopen(session, case, checker, body.note or "reopened")
     except DecisionError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     session.flush()
@@ -236,11 +388,20 @@ def decide(session: DbSession, case_id: str, body: DecisionRequest) -> DeskCase:
 
 
 def create_app(
-    db: Database, media_root: Path, desk_token: SecretStr | None, origin: str
+    db: Database,
+    media_root: Path,
+    desk_token: SecretStr | None,
+    origin: str,
+    data_root: Path = REPO_ROOT / "data",
+    translator: tuple[Reasoner, str] | None = None,
+    nepali_checker: tuple[Reasoner, str] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hamsa", version="0.1.0")
     app.state.db, app.state.media_root, app.state.desk_token = db, media_root, desk_token
+    app.state.data_root = data_root
+    app.state.translator, app.state.nepali_checker = translator, nepali_checker
     app.state.limiter = RateLimiter(SUBMISSIONS_PER_MINUTE)
+    app.state.failed_sign_ins = RateLimiter(FAILED_SIGN_INS_PER_MINUTE)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[origin],
@@ -252,15 +413,64 @@ def create_app(
     return app
 
 
+async def save_uploads(
+    request: Request, case_id: str, uploads: list[UploadFile]
+) -> list[StoredMedia]:
+    media_root: Path = request.app.state.media_root
+    stored: list[StoredMedia] = []
+    for upload in uploads:
+        data = await upload.read(MAX_FILE_BYTES + 1)
+        if len(data) > MAX_FILE_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file over 100 MB")
+        suffix = sniff_suffix(data)
+        if suffix is None:
+            raise HTTPException(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "only jpeg, png, webp, mp4, webm"
+            )
+        stored.append(save_media(media_root, case_id, data, suffix))
+    return stored
+
+
 def _draft(case: Case) -> dict[str, Any] | None:
     outputs: dict[str, Any] = case.outputs or {}
     return outputs.get("verdict")
+
+
+def needs_media(case: Case) -> bool:
+    """The worker tried the pasted link and got nothing, so the submitter is asked for the file."""
+    tried = case.status not in (CaseStatus.RECEIVED, CaseStatus.PROCESSING)
+    return tried and bool(case.source_url) and not case.media
+
+
+def public_view(session: Session, case: Case) -> PublicCase:
+    # A repeat merged into a decided report shows that verdict on its own page; the files
+    # belong to the earlier report, which the page links to.
+    answer = answered_by(session, case)
+    verdict = published_verdict(answer) if answer.status is CaseStatus.PUBLISHED else None
+    if verdict and answer is not case:
+        verdict = verdict.model_copy(update={"media": []})
+    return PublicCase(
+        id=case.id,
+        status=case.status,
+        created_at=case.created_at,
+        text=case.text,
+        source_url=case.source_url,
+        media_count=len(case.media),
+        timeline=[PublicStep(at=e.at, status=e.to_status) for e in case.events],
+        # Only once there is a verdict: the earlier report's id would open someone else's
+        # unpublished report and its upload slot.
+        merged_into=case.merged_into if verdict else None,
+        verdict=verdict,
+        needs_media=needs_media(case),
+    )
 
 
 def published_verdict(case: Case) -> PublishedVerdict | None:
     if case.final_label is None or not case.final_rationale_en or not case.final_rationale_ne:
         return None
     sources: list[Source] = []
+    claim: PublicClaim | None = None
+    footage: dict[str, EarlierFootage] = {}  # one entry per archive item, not per frame
     if case.outputs:
         outputs = outputs_from_json(case.outputs)
         if outputs.verdict and outputs.evidence:
@@ -270,12 +480,28 @@ def published_verdict(case: Case) -> PublishedVerdict | None:
                     sources.append(
                         Source(name=passage.source, url=passage.url, stance=citation.stance)
                     )
+        if outputs.claim:
+            claim = PublicClaim.model_validate(outputs.claim, from_attributes=True)
+        # Only strong matches, as the verdict saw: a weak candidate is a similar-looking scene,
+        # and a reader would take it as "this footage appeared there before".
+        strong = (
+            [h for h in outputs.media_match.hits if is_strong_match(h)]
+            if outputs.media_match
+            else []
+        )
+        for hit in strong:
+            footage.setdefault(
+                hit.archive_id, EarlierFootage.model_validate(hit, from_attributes=True)
+            )
     return PublishedVerdict(
         label=VerdictLabel(case.final_label),
         rationale_en=case.final_rationale_en,
         rationale_ne=case.final_rationale_ne,
         sources=sources,
         published_at=case.updated_at,
+        claim=claim,
+        earlier_footage=list(footage.values()),
+        media=[m.filename for m in case.media],
     )
 
 
@@ -324,4 +550,23 @@ def default_app() -> FastAPI:
     settings = get_settings()
     db = Database(settings.database_url)
     db.create_all()
-    return create_app(db, settings.media_root, settings.desk_token, settings.frontend_origin)
+    # Without a Groq key the desk still drafts the Nepali on the local model (ADR 0001), but
+    # unchecked: it garbled disaster words in 5 of 5 sentences and its own check passed all 5
+    # (2026-10-23), so every local translation comes with "read every word".
+    translator: tuple[Reasoner, str] = (
+        OllamaClient(str(settings.ollama_host)),
+        settings.vision_model,
+    )
+    checker: tuple[Reasoner, str] | None = None
+    if settings.groq_api_key is not None:
+        key = settings.groq_api_key.get_secret_value()
+        translator = (GroqClient(key), settings.reasoning_model)
+        checker = (GroqClient(key, reasoning_effort="low"), settings.checking_model)
+    return create_app(
+        db,
+        settings.media_root,
+        settings.desk_token,
+        settings.frontend_origin,
+        translator=translator,
+        nepali_checker=checker,
+    )

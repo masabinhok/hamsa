@@ -4,7 +4,7 @@ import hashlib
 import re
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from qdrant_client import QdrantClient, models
@@ -21,6 +21,12 @@ MAX_PER_ARTICLE = 2
 # crowded out other sources; independence is judged per publisher.
 MAX_PER_SOURCE = 3
 CANDIDATES_PER_QUERY = 20
+# News older than this before the claim is about an earlier event, e.g. 2024 Melamchi
+# reports for a 2026 Melamchi claim.
+NEWS_WINDOW = timedelta(days=30)
+# Reports confirming an event follow it within days; later news is about later events,
+# e.g. October Budhi Gandaki coverage cited for a post made during the August floods.
+NEWS_AFTER = timedelta(days=14)
 RRF_K = 60  # standard reciprocal-rank-fusion constant
 VISIBLE_TEXT_CHARS = 500
 
@@ -70,6 +76,14 @@ class EvidenceStore:
     def recreate(self) -> None:
         if self._client.collection_exists(self._collection):
             self._client.delete_collection(self._collection)
+        self._create()
+
+    def ensure(self) -> None:
+        """Create the collection unless it exists; `corpus watch` adds to it in place."""
+        if not self._client.collection_exists(self._collection):
+            self._create()
+
+    def _create(self) -> None:
         self._client.create_collection(
             self._collection,
             vectors_config=models.VectorParams(size=EMBEDDING_DIM, distance=models.Distance.COSINE),
@@ -111,9 +125,13 @@ class EvidenceStore:
         )
         return len(rows)
 
-    def search(self, vector: list[float], since: date) -> list[dict[str, Any]]:
-        """Nearest passages published since `since`, or fact-checks of any date."""
+    def search(
+        self, vector: list[float], since: date, until: date | None = None
+    ) -> list[dict[str, Any]]:
+        """Nearest passages published from `since` through `until`, or fact-checks of any
+        date."""
         since_ts = int(datetime.combine(since, time.min, tzinfo=UTC).timestamp())
+        until_ts = int(datetime.combine(until, time.max, tzinfo=UTC).timestamp()) if until else None
         response = self._client.query_points(
             self._collection,
             query=vector,
@@ -121,7 +139,9 @@ class EvidenceStore:
             with_payload=True,
             query_filter=models.Filter(
                 should=[
-                    models.FieldCondition(key="published_ts", range=models.Range(gte=since_ts)),
+                    models.FieldCondition(
+                        key="published_ts", range=models.Range(gte=since_ts, lte=until_ts)
+                    ),
                     models.FieldCondition(
                         key="source_kind",
                         match=models.MatchValue(value=SourceKind.FACT_CHECK.value),
@@ -141,12 +161,29 @@ def queries_for(claim: Claim) -> list[str]:
     return list(dict.fromkeys(queries))
 
 
-def retrieve(claim: Claim, store: EvidenceStore, embed: EmbedText, since: date) -> Evidence:
+def news_since(claim: Claim, seen_on: date) -> date:
+    """Start of the news window: a month before the date the claim is about.
+
+    Any disaster, past or upcoming: no deployment is tied to one event. Reports about an
+    event appear after it, so the window has no end; fact-checks of any date always count.
+    """
+    return (claim.claimed_date or seen_on) - NEWS_WINDOW
+
+
+def news_until(claim: Claim, posted: date | None) -> date | None:
+    """End of the news window, when the claim or the post dates the event."""
+    anchor = claim.claimed_date or posted
+    return anchor + NEWS_AFTER if anchor else None
+
+
+def retrieve(
+    claim: Claim, store: EvidenceStore, embed: EmbedText, since: date, until: date | None = None
+) -> Evidence:
     queries = queries_for(claim)
     scores: dict[str, float] = {}
     payloads: dict[str, dict[str, Any]] = {}
     for vector in embed(queries):
-        for rank, payload in enumerate(store.search(vector, since)):
+        for rank, payload in enumerate(store.search(vector, since, until)):
             pid: str = payload["passage_id"]
             scores[pid] = scores.get(pid, 0.0) + 1.0 / (RRF_K + rank + 1)
             payloads[pid] = payload
