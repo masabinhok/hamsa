@@ -138,7 +138,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         if (media_root / case.id).is_dir()
                         else []
                     )
-                    result = run(pipeline, case.text, media, seen_on=stored.posted_on)
+                    result = run(
+                        pipeline,
+                        case.text,
+                        media,
+                        seen_on=stored.posted_on,
+                        source_url=case.source_url,
+                    )
                     cached.write_text(
                         json.dumps(outputs_to_json(result.outputs), ensure_ascii=False),
                         encoding="utf-8",

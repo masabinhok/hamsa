@@ -20,6 +20,7 @@ from app.pipeline.contracts import (
     Duplicate,
     Evidence,
     MediaMatch,
+    Passage,
     RouteDecision,
     Stage,
     StageFailure,
@@ -27,7 +28,14 @@ from app.pipeline.contracts import (
 )
 from app.pipeline.duplicate import OpenClaim, claim_duplicate
 from app.pipeline.media_match import ArchiveIndex, Embed, match_media
-from app.pipeline.retrieve import EmbedText, EvidenceStore, news_since, news_until, retrieve
+from app.pipeline.retrieve import (
+    MAX_PASSAGES,
+    EmbedText,
+    EvidenceStore,
+    news_since,
+    news_until,
+    retrieve,
+)
 from app.pipeline.verdict import Reasoner, judge
 from app.pipeline.web_search import FindWeb, add_web
 from app.router.route import StageOutputs, route
@@ -52,6 +60,13 @@ class Pipeline:
     vet_fact_checks: Vet | None = None
     # Pages found by web search; None without SearXNG.
     find_web: FindWeb | None = None
+    # What X or TikTok shows on the post itself (ADR 0017), from the post's link.
+    find_on_post: Callable[[str | None], list[Passage]] | None = None
+
+
+def add_on_post(evidence: Evidence, found: list[Passage]) -> Evidence:
+    """What the platform shows on this post goes first: it is about this post, not another."""
+    return Evidence(passages=(found + evidence.passages)[:MAX_PASSAGES])
 
 
 @dataclass
@@ -74,6 +89,7 @@ def run(
     media: Sequence[Path],
     seen_on: date | None = None,
     open_claims: Sequence[OpenClaim] = (),
+    source_url: str | None = None,
 ) -> Result:
     """`seen_on` is the post's date when known (eval items); otherwise today, the submission.
     `open_claims` are the cases already on the desk, for the duplicate check."""
@@ -136,16 +152,19 @@ def run(
     since, until = news_since(claim, seen_on or date.today()), news_until(claim, seen_on)
     evidence: Evidence | None = stage(
         Stage.RETRIEVE,
-        lambda: add_web(
-            add_reviews(
-                vetted(
-                    claim,
-                    retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
-                    pipeline.vet_fact_checks,
+        lambda: add_on_post(
+            add_web(
+                add_reviews(
+                    vetted(
+                        claim,
+                        retrieve(claim, pipeline.evidence, pipeline.embed_text, since, until),
+                        pipeline.vet_fact_checks,
+                    ),
+                    pipeline.find_reviews(claim) if pipeline.find_reviews else [],
                 ),
-                pipeline.find_reviews(claim) if pipeline.find_reviews else [],
+                pipeline.find_web(claim, since, until) if pipeline.find_web else [],
             ),
-            pipeline.find_web(claim, since, until) if pipeline.find_web else [],
+            pipeline.find_on_post(source_url) if pipeline.find_on_post else [],
         ),
     )
     if matched is None or evidence is None:
