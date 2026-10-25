@@ -987,7 +987,7 @@
 }
 
 /* "Load more" under the front page's stories. */
-.more {
+.loadMore {
   justify-self: center;
   min-height: 48px;
   padding: var(--space-2) var(--space-6);
@@ -1004,16 +1004,25 @@
     transform var(--dur-micro) var(--ease-out);
 }
 
-.more:hover:not(:disabled) {
+.loadMore:hover:not(:disabled) {
   background: var(--ink);
   color: var(--milk);
 }
 
-.more:active {
+.loadMore:active {
   transform: scale(var(--press));
 }
 
-.more:disabled {
+.loadMore:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+/* In the closed "already have the photo or video?" line, both languages sit on one line. */
+.more summary .en {
+  display: inline;
+}
+
+.more summary .en::before {
+  content: " · ";
 }

@@ -441,7 +441,7 @@ export function Recent({ selected = null, compact = false }: { selected?: string
       )}
       {!compact && recent !== null && shown.length > 0 && (
         next ? (
-          <button type="button" className={styles.more} onClick={loadMore} disabled={loadingMore}>
+          <button type="button" className={styles.loadMore} onClick={loadMore} disabled={loadingMore}>
             थप हेर्नुहोस् · <span lang="en">Load more</span>
           </button>
         ) : (
